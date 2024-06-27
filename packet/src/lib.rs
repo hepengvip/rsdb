@@ -1,6 +1,6 @@
-use std::io::BufRead;
+use std::io::{Read, Write};
 
-use byteorder::{BigEndian, ReadBytesExt};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 // length constants
 pub const CMD_LENGTH: usize = 1;
@@ -19,7 +19,6 @@ const RESP_TOKEN: u8 = 0x57;
 const RESP_TOKENS: u8 = 0x58;
 const RESP_PAIRS: u8 = 0x59;
 
-
 #[derive(Debug, PartialEq)]
 pub enum Packet {
     CmdWrite(Vec<Vec<u8>>),
@@ -32,11 +31,216 @@ pub enum Packet {
     RespPairs(Vec<Vec<u8>>),
 }
 
-pub struct Packer<T: BufRead> {
+pub struct PacketWriter<T: Write> {
+    writer: T,
+}
+
+impl<T: Write> PacketWriter<T> {
+    pub fn new(writer: T) -> Self {
+        Self { writer }
+    }
+
+    pub fn write(&mut self, packet: &Packet) {
+        match packet {
+            Packet::CmdWrite(pairs) => {
+                self.write_header(CMD_WRITE);
+                self.write_size((pairs.len() / 2) as u16);
+                for token in pairs {
+                    self.write_token(token);
+                }
+            }
+            Packet::CmdRead(keys) => {
+                self.write_header(CMD_READ);
+                self.write_size(keys.len() as u16);
+                for token in keys {
+                    self.write_token(token);
+                }
+            }
+            Packet::CmdDelete(keys) => {
+                self.write_header(CMD_DELETE);
+                self.write_size(keys.len() as u16);
+                for token in keys {
+                    self.write_token(token);
+                }
+            }
+
+            Packet::RespOk(message) => {
+                self.write_header(RESP_OK);
+                self.write_token(message.as_bytes());
+            }
+            Packet::RespError(message) => {
+                self.write_header(RESP_ERROR);
+                self.write_token(message.as_bytes());
+            }
+            Packet::RespToken(token) => {
+                self.write_header(RESP_TOKEN);
+                self.write_token(token);
+            }
+            Packet::RespTokens(tokens) => {
+                self.write_header(RESP_TOKENS);
+                self.write_size(tokens.len() as u16);
+                for token in tokens {
+                    self.write_token(token);
+                }
+            }
+            Packet::RespPairs(pairs) => {
+                self.write_header(RESP_PAIRS);
+                self.write_size((pairs.len() / 2) as u16);
+                for token in pairs {
+                    self.write_token(token);
+                }
+            }
+        }
+    }
+
+    fn write_header(&mut self, packet_type: u8) {
+        self.writer.write_u8(packet_type).unwrap();
+    }
+
+    fn write_size(&mut self, size: u16) {
+        self.writer.write_u16::<BigEndian>(size).unwrap();
+    }
+
+    fn write_token(&mut self, token: &[u8]) {
+        self.writer
+            .write_u32::<BigEndian>(token.len() as u32)
+            .unwrap();
+        self.writer.write_all(token).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod test_packet_writer {
+
+    use super::*;
+
+    #[test]
+    fn test_cmd_write() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        packer.write(&Packet::CmdWrite(vec![b"key".to_vec(), b"val".to_vec()]));
+        assert_eq!(
+            writer,
+            [CMD_WRITE, 0, 1, 0, 0, 0, 3, b'k', b'e', b'y', 0, 0, 0, 3, b'v', b'a', b'l']
+        );
+    }
+
+    #[test]
+    fn test_cmd_read() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        packer.write(&&Packet::CmdRead(vec![b"key".to_vec(), b"val".to_vec()]));
+        assert_eq!(
+            writer,
+            [CMD_READ, 0, 2, 0, 0, 0, 3, b'k', b'e', b'y', 0, 0, 0, 3, b'v', b'a', b'l']
+        );
+    }
+
+    #[test]
+    fn test_cmd_delete() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        packer.write(&&Packet::CmdDelete(vec![b"key".to_vec(), b"val".to_vec()]));
+        assert_eq!(
+            writer,
+            [CMD_DELETE, 0, 2, 0, 0, 0, 3, b'k', b'e', b'y', 0, 0, 0, 3, b'v', b'a', b'l']
+        );
+    }
+
+    #[test]
+    fn test_resp_ok() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = Packet::RespOk("world".to_string());
+        packer.write(&packet);
+        assert_eq!(writer, [RESP_OK, 0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd'],);
+    }
+
+    #[test]
+    fn test_resp_error() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = Packet::RespError("world".to_string());
+        packer.write(&packet);
+        assert_eq!(
+            writer,
+            [RESP_ERROR, 0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd'],
+        );
+    }
+
+    #[test]
+    fn test_resp_token() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = Packet::RespToken(b"world".to_vec());
+        packer.write(&packet);
+        assert_eq!(
+            writer,
+            [RESP_TOKEN, 0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd'],
+        );
+    }
+
+    #[test]
+    fn test_resp_tokens() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = Packet::RespTokens(vec![
+            "hello".as_bytes().to_vec(),
+            "world".as_bytes().to_vec(),
+        ]);
+        packer.write(&packet);
+        assert_eq!(
+            writer,
+            [
+                RESP_TOKENS,
+                0,
+                2,
+                0,
+                0,
+                0,
+                5,
+                b'h',
+                b'e',
+                b'l',
+                b'l',
+                b'o',
+                0,
+                0,
+                0,
+                5,
+                b'w',
+                b'o',
+                b'r',
+                b'l',
+                b'd',
+            ],
+        );
+    }
+
+    #[test]
+    fn test_resp_pairs() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = Packet::RespPairs(vec![
+            "hello".as_bytes().to_vec(),
+            "world".as_bytes().to_vec(),
+        ]);
+        packer.write(&packet);
+        assert_eq!(
+            writer,
+            [
+                RESP_PAIRS, 0, 1, 0, 0, 0, 5, b'h', b'e', b'l', b'l', b'o', 0, 0, 0, 5, b'w', b'o',
+                b'r', b'l', b'd',
+            ],
+        );
+    }
+}
+
+pub struct PacketReader<T: Read> {
     reader: T,
 }
 
-impl<T: BufRead> Packer<T> {
+impl<T: Read> PacketReader<T> {
     pub fn new(reader: T) -> Self {
         Self { reader }
     }
@@ -132,36 +336,41 @@ impl<T: BufRead> Packer<T> {
 }
 
 #[cfg(test)]
-mod tests {
+mod test_packet_reader {
     use super::*;
 
     #[test]
-    fn test_write() {
+    fn test_cmd_write() {
         let bytes = vec![
-            CMD_WRITE,  // packet type id
-            0, 2,  // pair count
-            0, 0, 0, 3, b'k', b'e', b'y',  // key 1
-            0, 0, 0, 3, b'v', b'a', b'l',  // value 1
-            0, 0, 0, 5, b'h', b'e', b'l', b'l', b'o',  // key 2
-            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd',  // value 2
+            CMD_WRITE, // packet type id
+            0, 2, // pair count
+            0, 0, 0, 3, b'k', b'e', b'y', // key 1
+            0, 0, 0, 3, b'v', b'a', b'l', // value 1
+            0, 0, 0, 5, b'h', b'e', b'l', b'l', b'o', // key 2
+            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd', // value 2
         ];
-        let mut packer = Packer::new(&bytes[..]);
+        let mut packer = PacketReader::new(&bytes[..]);
         let packet = packer.read_packet();
         assert_eq!(
             packet,
-            Packet::CmdWrite(vec![b"key".to_vec(), b"val".to_vec(), b"hello".to_vec(), b"world".to_vec()]),
+            Packet::CmdWrite(vec![
+                b"key".to_vec(),
+                b"val".to_vec(),
+                b"hello".to_vec(),
+                b"world".to_vec()
+            ]),
         );
     }
 
     #[test]
-    fn test_delete() {
+    fn test_cmd_delete() {
         let bytes = vec![
-            CMD_DELETE,  // packet type id
-            0, 2,  // pair count
-            0, 0, 0, 3, b'k', b'e', b'y',  // key 1
-            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd',  // value 2
+            CMD_DELETE, // packet type id
+            0, 2, // pair count
+            0, 0, 0, 3, b'k', b'e', b'y', // key 1
+            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd', // value 2
         ];
-        let mut packer = Packer::new(&bytes[..]);
+        let mut packer = PacketReader::new(&bytes[..]);
         let packet = packer.read_packet();
         assert_eq!(
             packet,
@@ -170,14 +379,14 @@ mod tests {
     }
 
     #[test]
-    fn test_read() {
+    fn test_cmd_read() {
         let bytes = vec![
-            CMD_READ,  // packet type id
-            0, 2,  // pair count
-            0, 0, 0, 3, b'k', b'e', b'y',  // key 1
-            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd',  // value 2
+            CMD_READ, // packet type id
+            0, 2, // pair count
+            0, 0, 0, 3, b'k', b'e', b'y', // key 1
+            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd', // value 2
         ];
-        let mut packer = Packer::new(&bytes[..]);
+        let mut packer = PacketReader::new(&bytes[..]);
         let packet = packer.read_packet();
         assert_eq!(
             packet,
@@ -188,55 +397,348 @@ mod tests {
     #[test]
     fn test_resp_ok() {
         let bytes = vec![
-            RESP_OK,  // packet type id
-            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd',  // message
+            RESP_OK, // packet type id
+            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd', // message
         ];
-        let mut packer = Packer::new(&bytes[..]);
+        let mut packer = PacketReader::new(&bytes[..]);
         let packet = packer.read_packet();
-        assert_eq!(
-            packet,
-            Packet::RespOk("world".to_string()),
-        );
+        assert_eq!(packet, Packet::RespOk("world".to_string()),);
     }
 
     #[test]
     fn test_resp_error() {
         let bytes = vec![
-            RESP_ERROR,  // packet type id
-            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd',  // message
+            RESP_ERROR, // packet type id
+            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd', // message
         ];
-        let mut packer = Packer::new(&bytes[..]);
+        let mut packer = PacketReader::new(&bytes[..]);
         let packet = packer.read_packet();
-        assert_eq!(
-            packet,
-            Packet::RespError("world".to_string()),
-        );
+        assert_eq!(packet, Packet::RespError("world".to_string()),);
     }
 
     #[test]
     fn test_resp_token() {
         let bytes = vec![
-            RESP_TOKEN,  // packet type id
-            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd',  // token
+            RESP_TOKEN, // packet type id
+            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd', // token
         ];
-        let mut packer = Packer::new(&bytes[..]);
+        let mut packer = PacketReader::new(&bytes[..]);
         let packet = packer.read_packet();
-        assert_eq!(
-            packet,
-            Packet::RespToken(b"world".to_vec()),
-        );
+        assert_eq!(packet, Packet::RespToken(b"world".to_vec()),);
     }
 
     #[test]
     fn test_resp_tokens() {
         let bytes = vec![
-            RESP_TOKENS,  // packet type id
-            0, 3,  // token count
-            0, 0, 0, 3, b'k', b'e', b'y',  // token 1
-            0, 0, 0x01, 0x1c, b't', b'h', b'i', b's', b' ', b'i', b's', b' ', b'a', b' ', b's', b'u', b'c', b'c', b'e', b's', b's', b'f', b'u', b'l', b' ', b'm', b'e', b's', b's', b'a', b'g', b'e', b' ', b'a', b'b', b'o', b'u', b't', b' ', b't', b'h', b'e', b' ', b's', b'y', b's', b't', b'e', b'm', b' ', b'j', b's', b'd', b'f', b'j', b'i', b'o', b'e', b'w', b'f', b'j', b'l', b'k', b's', b'f', b'j', b'i', b'e', b'w', b'f', b'w', b'o', b'f', b'j', b'd', b's', b'j', b'l', b's', b'k', b'f', b'j', b'k', b'l', b's', b'f', b'j', b'l', b'd', b'k', b's', b'f', b'j', b'l', b'd', b'k', b's', b'f', b'j', b'k', b'l', b's', b'f', b'j', b'd', b'k', b'l', b's', b'f', b'j', b'd', b'k', b'l', b's', b'f', b'j', b'k', b'd', b'f', b'j', b'd', b'k', b'f', b'j', b'd', b'k', b'f', b'j', b'd', b'k', b'l', b's', b'f', b'j', b'd', b'k', b's', b'f', b'j', b'd', b'k', b's', b'f', b'j', b'd', b's', b'k', b'f', b'j', b'd', b's', b'k', b'f', b'j', b'd', b's', b'f', b'j', b'd', b's', b'f', b'd', b's', b'f', b'd', b'f', b'd', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'f', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'a', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'd', b'f', b'e', b'f', b'e', b'f', b'e', b'w', b'f', b'e', b'f', b'a',  // token 2
-            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd',  // token 3
+            RESP_TOKENS, // packet type id
+            0,
+            3, // token count
+            0,
+            0,
+            0,
+            3,
+            b'k',
+            b'e',
+            b'y', // token 1
+            0,
+            0,
+            0x01,
+            0x1c,
+            b't',
+            b'h',
+            b'i',
+            b's',
+            b' ',
+            b'i',
+            b's',
+            b' ',
+            b'a',
+            b' ',
+            b's',
+            b'u',
+            b'c',
+            b'c',
+            b'e',
+            b's',
+            b's',
+            b'f',
+            b'u',
+            b'l',
+            b' ',
+            b'm',
+            b'e',
+            b's',
+            b's',
+            b'a',
+            b'g',
+            b'e',
+            b' ',
+            b'a',
+            b'b',
+            b'o',
+            b'u',
+            b't',
+            b' ',
+            b't',
+            b'h',
+            b'e',
+            b' ',
+            b's',
+            b'y',
+            b's',
+            b't',
+            b'e',
+            b'm',
+            b' ',
+            b'j',
+            b's',
+            b'd',
+            b'f',
+            b'j',
+            b'i',
+            b'o',
+            b'e',
+            b'w',
+            b'f',
+            b'j',
+            b'l',
+            b'k',
+            b's',
+            b'f',
+            b'j',
+            b'i',
+            b'e',
+            b'w',
+            b'f',
+            b'w',
+            b'o',
+            b'f',
+            b'j',
+            b'd',
+            b's',
+            b'j',
+            b'l',
+            b's',
+            b'k',
+            b'f',
+            b'j',
+            b'k',
+            b'l',
+            b's',
+            b'f',
+            b'j',
+            b'l',
+            b'd',
+            b'k',
+            b's',
+            b'f',
+            b'j',
+            b'l',
+            b'd',
+            b'k',
+            b's',
+            b'f',
+            b'j',
+            b'k',
+            b'l',
+            b's',
+            b'f',
+            b'j',
+            b'd',
+            b'k',
+            b'l',
+            b's',
+            b'f',
+            b'j',
+            b'd',
+            b'k',
+            b'l',
+            b's',
+            b'f',
+            b'j',
+            b'k',
+            b'd',
+            b'f',
+            b'j',
+            b'd',
+            b'k',
+            b'f',
+            b'j',
+            b'd',
+            b'k',
+            b'f',
+            b'j',
+            b'd',
+            b'k',
+            b'l',
+            b's',
+            b'f',
+            b'j',
+            b'd',
+            b'k',
+            b's',
+            b'f',
+            b'j',
+            b'd',
+            b'k',
+            b's',
+            b'f',
+            b'j',
+            b'd',
+            b's',
+            b'k',
+            b'f',
+            b'j',
+            b'd',
+            b's',
+            b'k',
+            b'f',
+            b'j',
+            b'd',
+            b's',
+            b'f',
+            b'j',
+            b'd',
+            b's',
+            b'f',
+            b'd',
+            b's',
+            b'f',
+            b'd',
+            b'f',
+            b'd',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'f',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'a',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'd',
+            b'f',
+            b'e',
+            b'f',
+            b'e',
+            b'f',
+            b'e',
+            b'w',
+            b'f',
+            b'e',
+            b'f',
+            b'a', // token 2
+            0,
+            0,
+            0,
+            5,
+            b'w',
+            b'o',
+            b'r',
+            b'l',
+            b'd', // token 3
         ];
-        let mut packer = Packer::new(&bytes[..]);
+        let mut packer = PacketReader::new(&bytes[..]);
         let packet = packer.read_packet();
         assert_eq!(
             packet,
@@ -251,18 +753,23 @@ mod tests {
     #[test]
     fn test_resp_pairs() {
         let bytes = vec![
-            RESP_PAIRS,  // packet type id
-            0, 2,  // pair count
-            0, 0, 0, 3, b'k', b'e', b'y',  // key 1
-            0, 0, 0, 5, b'v', b'a', b'l', b'u', b'e',  // value 1
-            0, 0, 0, 5, b'h', b'e', b'l', b'l', b'o',  // key 2
-            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd',  // value 2
+            RESP_PAIRS, // packet type id
+            0, 2, // pair count
+            0, 0, 0, 3, b'k', b'e', b'y', // key 1
+            0, 0, 0, 5, b'v', b'a', b'l', b'u', b'e', // value 1
+            0, 0, 0, 5, b'h', b'e', b'l', b'l', b'o', // key 2
+            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd', // value 2
         ];
-        let mut packer = Packer::new(&bytes[..]);
+        let mut packer = PacketReader::new(&bytes[..]);
         let packet = packer.read_packet();
         assert_eq!(
             packet,
-            Packet::RespPairs(vec![b"key".to_vec(), b"value".to_vec(), b"hello".to_vec(), b"world".to_vec()]),
+            Packet::RespPairs(vec![
+                b"key".to_vec(),
+                b"value".to_vec(),
+                b"hello".to_vec(),
+                b"world".to_vec()
+            ]),
         );
     }
 }
