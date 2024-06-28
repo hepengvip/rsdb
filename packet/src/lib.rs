@@ -1,4 +1,4 @@
-use std::io::{Read, Write};
+use std::io::{Read, Write, Error};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
@@ -105,12 +105,17 @@ impl<T: Write> PacketWriter<T> {
         self.writer
             .write_u32::<BigEndian>(token.len() as u32)
             .unwrap();
+        if token.len() == 0 {
+            return;
+        }
         self.writer.write_all(token).unwrap();
     }
 }
 
 #[cfg(test)]
 mod test_packet_writer {
+
+    use std::vec;
 
     use super::*;
 
@@ -187,6 +192,8 @@ mod test_packet_writer {
         let packet = Packet::RespTokens(vec![
             "hello".as_bytes().to_vec(),
             "world".as_bytes().to_vec(),
+            vec![],
+            "rust".as_bytes().to_vec(),
         ]);
         packer.write_packet(&packet);
         assert_eq!(
@@ -194,7 +201,7 @@ mod test_packet_writer {
             [
                 RESP_TOKENS,
                 0,
-                2,
+                4,
                 0,
                 0,
                 0,
@@ -213,6 +220,7 @@ mod test_packet_writer {
                 b'r',
                 b'l',
                 b'd',
+                0, 0, 0, 0, 0, 0, 0, 4, b'r', b'u', b's', b't',
             ],
         );
     }
@@ -329,6 +337,9 @@ impl<T: Read> PacketReader<T> {
 
     fn read_token(&mut self) -> Vec<u8> {
         let length = self.reader.read_u32::<BigEndian>().unwrap();
+        if length == 0 {
+            return Vec::new();
+        }
         let mut key = vec![0u8; length as usize];
         self.reader.read_exact(&mut key).unwrap();
         key
@@ -432,7 +443,7 @@ mod test_packet_reader {
         let bytes = vec![
             RESP_TOKENS, // packet type id
             0,
-            3, // token count
+            5, // token count
             0,
             0,
             0,
@@ -737,6 +748,8 @@ mod test_packet_reader {
             b'r',
             b'l',
             b'd', // token 3
+            0, 0, 0, 0,  // token 4
+            0, 0, 0, 4, b'r', b'u', b's', b't', // token 5
         ];
         let mut packer = PacketReader::new(&bytes[..]);
         let packet = packer.read_packet();
@@ -746,6 +759,8 @@ mod test_packet_reader {
                 b"key".to_vec(),
                 b"this is a successful message about the system jsdfjioewfjlksfjiewfwofjdsjlskfjklsfjldksfjldksfjklsfjdklsfjdklsfjkdfjdkfjdkfjdklsfjdksfjdksfjdskfjdskfjdsfjdsfdsfdfdfffffffffffffffffffffffffffffffffffaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaadddddddddddddddddddddddddddddddddddddfefefewfefa".to_vec(),
                 b"world".to_vec(),
+                vec![],
+                b"rust".to_vec()
             ]),
         );
     }
@@ -783,8 +798,8 @@ impl<T: Read + Write> PacketReaderWriter<T> {
         Self { rw }
     }
 
-    pub fn read_packet(&mut self) -> Packet {
-        let header = self.read_header();
+    pub fn read_packet(&mut self) -> Result<Packet, Error> {
+        let header = self.read_header()?;
 
         match header {
             CMD_WRITE => {
@@ -796,7 +811,7 @@ impl<T: Read + Write> PacketReaderWriter<T> {
                     let token = self.read_token();
                     tokens.push(token);
                 }
-                return Packet::CmdWrite(tokens);
+                return Ok(Packet::CmdWrite(tokens));
             }
             CMD_DELETE => {
                 let key_count = self.read_size();
@@ -805,7 +820,7 @@ impl<T: Read + Write> PacketReaderWriter<T> {
                     let key = self.read_token();
                     keys.push(key);
                 }
-                return Packet::CmdDelete(keys);
+                return Ok(Packet::CmdDelete(keys));
             }
             CMD_READ => {
                 let key_count = self.read_size();
@@ -814,21 +829,21 @@ impl<T: Read + Write> PacketReaderWriter<T> {
                     let key = self.read_token();
                     keys.push(key);
                 }
-                return Packet::CmdRead(keys);
+                return Ok(Packet::CmdRead(keys));
             }
             RESP_OK => {
                 let message = self.read_token();
                 let message = String::from_utf8(message).unwrap();
-                return Packet::RespOk(message);
+                return Ok(Packet::RespOk(message));
             }
             RESP_ERROR => {
                 let message = self.read_token();
                 let message = String::from_utf8(message).unwrap();
-                return Packet::RespError(message);
+                return Ok(Packet::RespError(message));
             }
             RESP_TOKEN => {
                 let token = self.read_token();
-                return Packet::RespToken(token);
+                return Ok(Packet::RespToken(token));
             }
             RESP_TOKENS => {
                 let token_count = self.read_size();
@@ -837,7 +852,7 @@ impl<T: Read + Write> PacketReaderWriter<T> {
                     let token = self.read_token();
                     tokens.push(token);
                 }
-                return Packet::RespTokens(tokens);
+                return Ok(Packet::RespTokens(tokens));
             }
             RESP_PAIRS => {
                 let pair_count = self.read_size();
@@ -848,7 +863,7 @@ impl<T: Read + Write> PacketReaderWriter<T> {
                     let token = self.read_token();
                     pairs.push(token);
                 }
-                return Packet::RespPairs(pairs);
+                return Ok(Packet::RespPairs(pairs));
             }
 
             _ => {
@@ -910,8 +925,8 @@ impl<T: Read + Write> PacketReaderWriter<T> {
         }
     }
 
-    fn read_header(&mut self) -> u8 {
-        self.rw.read_u8().unwrap()
+    fn read_header(&mut self) -> Result<u8, Error> {
+        self.rw.read_u8()
     }
 
     fn write_header(&mut self, packet_type: u8) {
@@ -928,6 +943,9 @@ impl<T: Read + Write> PacketReaderWriter<T> {
 
     fn read_token(&mut self) -> Vec<u8> {
         let length = self.rw.read_u32::<BigEndian>().unwrap();
+        if length == 0 {
+            return Vec::new();
+        }
         let mut key = vec![0u8; length as usize];
         self.rw.read_exact(&mut key).unwrap();
         key
@@ -937,6 +955,9 @@ impl<T: Read + Write> PacketReaderWriter<T> {
         self.rw
             .write_u32::<BigEndian>(token.len() as u32)
             .unwrap();
+        if token.len() == 0 {
+            return;
+        }
         self.rw.write_all(token).unwrap();
     }
 }
