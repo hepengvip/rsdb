@@ -1,4 +1,4 @@
-use std::io::{Read, Write, Error};
+use std::io::{Error, Read, Write};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
@@ -220,7 +220,18 @@ mod test_packet_writer {
                 b'r',
                 b'l',
                 b'd',
-                0, 0, 0, 0, 0, 0, 0, 4, b'r', b'u', b's', b't',
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                4,
+                b'r',
+                b'u',
+                b's',
+                b't',
             ],
         );
     }
@@ -748,8 +759,18 @@ mod test_packet_reader {
             b'r',
             b'l',
             b'd', // token 3
-            0, 0, 0, 0,  // token 4
-            0, 0, 0, 4, b'r', b'u', b's', b't', // token 5
+            0,
+            0,
+            0,
+            0, // token 4
+            0,
+            0,
+            0,
+            4,
+            b'r',
+            b'u',
+            b's',
+            b't', // token 5
         ];
         let mut packer = PacketReader::new(&bytes[..]);
         let packet = packer.read_packet();
@@ -952,9 +973,7 @@ impl<T: Read + Write> PacketReaderWriter<T> {
     }
 
     fn write_token(&mut self, token: &[u8]) {
-        self.rw
-            .write_u32::<BigEndian>(token.len() as u32)
-            .unwrap();
+        self.rw.write_u32::<BigEndian>(token.len() as u32).unwrap();
         if token.len() == 0 {
             return;
         }

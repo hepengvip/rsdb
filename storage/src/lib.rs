@@ -3,7 +3,6 @@ extern crate tempfile;
 
 use rocksdb::{Options, DB};
 
-
 pub struct Storage {
     pub db: DB,
 }
@@ -17,10 +16,7 @@ impl Storage {
     }
 
     pub fn new_with_temp_dir(prefix: &str) -> Self {
-        let dir = tempfile::Builder::new()
-           .prefix(prefix)
-           .tempdir()
-           .unwrap();
+        let dir = tempfile::Builder::new().prefix(prefix).tempdir().unwrap();
         let db = DB::open_default(dir.path()).unwrap();
         Self { db }
     }
@@ -29,7 +25,7 @@ impl Storage {
         self.db.put(key, value).unwrap();
     }
 
-    pub fn get(&self, key: &[u8]) -> Option<Vec<u8>>{
+    pub fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
         self.db.get(key).unwrap()
     }
 
@@ -37,7 +33,6 @@ impl Storage {
         self.db.delete(key).unwrap();
     }
 }
-
 
 #[cfg(test)]
 mod tests {
