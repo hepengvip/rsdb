@@ -7,9 +7,28 @@ extern crate storage;
 
 use packet::{Packet, PacketReaderWriter};
 use storage::Storage;
+use clap::Parser;
+
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short, long, default_value_t=String::from("127.0.0.1:1935"))]
+    addr: String,
+
+    #[arg(short, long)]
+    root: String,
+
+    // Number of times to greet
+    // #[arg(short, long, default_value_t = 1)]
+    // count: u8,
+}
+
 
 fn main() {
-    let s = Server::new();
+    let args = Args::parse();
+
+    let s = Server::new(&args.addr, &args.root);
     s.listen_and_serve();
 }
 
@@ -17,15 +36,19 @@ pub struct Server {
     // addr: Option<String>,
     listener: TcpListener,
     storage: Arc<Storage>,
+    address: String,
+    storage_dir: String,
 }
 
 impl Server {
-    pub fn new() -> Self {
+    pub fn new(addr: &str, root: &str) -> Self {
         let server = Server {
             // addr: Some("127.0.0.1:1935".to_string()),
-            listener: TcpListener::bind("127.0.0.1:1935").unwrap(),
+            listener: TcpListener::bind(addr).unwrap(),
             // storage: Arc::new(Storage::new_with_temp_dir("rsdb")),
-            storage: Arc::new(Storage::new("rsdb-storage")),
+            storage: Arc::new(Storage::new(root)),
+            address: addr.to_string(),
+            storage_dir: root.to_string(),
         };
 
         server
@@ -33,7 +56,8 @@ impl Server {
 
     pub fn listen_and_serve(&self) {
         // Build a server
-        println!("Listening...");
+        println!("Listening at {}", &self.address);
+        println!("Storage: {}", &self.storage_dir);
         for streams in self.listener.incoming() {
             match streams {
                 Err(e) => {
