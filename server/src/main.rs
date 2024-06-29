@@ -131,7 +131,11 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
 
                 Packet::RespOk("Ok.".to_string())
             }
-            _ => panic!("Unexpected packet type"),
+            Packet::CmdCurrentDB() => {
+                println!("Received current db command");
+                Packet::RespToken(current_db_name.as_bytes().to_vec())
+            }
+            _ => Packet::RespError("unknown command".to_string()),
         };
         rw.write_packet(&resp);
     }

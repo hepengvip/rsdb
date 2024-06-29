@@ -20,8 +20,15 @@ fn main() {
     let stream = TcpStream::connect(args.addr).unwrap();
     let mut rw = PacketReaderWriter::new(stream);
 
+    let mut current_db_name = String::new();
+
     loop {
-        print!(">> ");
+        if current_db_name.len() == 0 {
+            print!("(none) ");
+        } else {
+            print!("({}) ", &current_db_name);
+        }
+
         stdout().flush().unwrap();
         buf.clear();
 
@@ -41,6 +48,10 @@ fn main() {
         let mut bytes_parts = vec![];
         match parts[0] {
             "set" => {
+                if !validate_dbname(&current_db_name) {
+                    continue;
+                }
+
                 if parts.len() < 3 || parts.len() % 2 == 0 {
                     println!("Error: invalid parameter for set");
                     continue;
@@ -57,6 +68,10 @@ fn main() {
                 rw.write_packet(&packet);
             }
             "get" => {
+                if !validate_dbname(&current_db_name) {
+                    continue;
+                }
+
                 if parts.len() < 2 {
                     println!("Error: invalid parameter for get");
                     continue;
@@ -70,6 +85,10 @@ fn main() {
                 rw.write_packet(&packet);
             }
             "delete" => {
+                if !validate_dbname(&current_db_name) {
+                    continue;
+                }
+
                 if parts.len() < 2 {
                     println!("Error: invalid parameter for delete");
                     continue;
@@ -92,6 +111,15 @@ fn main() {
                 let packet = Packet::CmdUse(bytes);
                 rw.write_packet(&packet);
             }
+            "current_db" => {
+                if parts.len() != 1 {
+                    println!("Error: invalid parameter for current_db");
+                    continue;
+                }
+
+                let packet = Packet::CmdCurrentDB();
+                rw.write_packet(&packet);
+            }
             _ => {
                 println!("Error: unknown command `{}`", parts[0]);
                 continue;
@@ -102,6 +130,11 @@ fn main() {
         match resp {
             Packet::RespOk(ref msg) => {
                 println!("MessageOk: {}", msg);
+
+                // current db
+                if parts[0] == "use" {
+                    current_db_name = parts[1].to_string();
+                }
             }
             Packet::RespError(ref msg) => {
                 println!("MessageError: {}", msg);
@@ -144,4 +177,12 @@ fn main() {
 
         stdout().flush().unwrap();
     }
+}
+
+fn validate_dbname(name: &str) -> bool {
+    if name.len() == 0 {
+        println!("Error: no db selected");
+        return false;
+    }
+    true
 }
