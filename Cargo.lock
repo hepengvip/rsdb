@@ -92,14 +92,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "client"
-version = "0.1.0"
-dependencies = [
- "packet",
- "storage",
-]
-
-[[package]]
 name = "either"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -315,6 +307,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rsdb-client"
+version = "0.1.0"
+dependencies = [
+ "packet",
+ "storage",
+]
+
+[[package]]
+name = "rsdb-server"
+version = "0.1.0"
+dependencies = [
+ "packet",
+ "storage",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -331,14 +339,6 @@ dependencies = [
  "libc",
  "linux-raw-sys",
  "windows-sys",
-]
-
-[[package]]
-name = "server"
-version = "0.1.0"
-dependencies = [
- "packet",
- "storage",
 ]
 
 [[package]]
