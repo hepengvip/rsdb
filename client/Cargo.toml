@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 storage = { path = "../storage" }
 packet = { path = "../packet" }
+clap = { version = "4.5.8", features = ["derive"] }

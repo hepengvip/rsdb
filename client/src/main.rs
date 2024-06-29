@@ -3,11 +3,21 @@ use std::net::TcpStream;
 
 extern crate packet;
 
+use clap::Parser;
 use packet::{Packet, PacketReaderWriter};
 
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = "RSDB server")]
+struct Args {
+    #[arg(short, long, default_value_t=String::from("127.0.0.1:1935"))]
+    addr: String,
+}
+
 fn main() {
+    let args = Args::parse();
+
     let mut buf = String::new();
-    let stream = TcpStream::connect("127.0.0.1:1935").unwrap();
+    let stream = TcpStream::connect(args.addr).unwrap();
     let mut rw = PacketReaderWriter::new(stream);
 
     loop {
@@ -70,6 +80,16 @@ fn main() {
                     bytes_parts.push(parts[idx].as_bytes().to_vec());
                 }
                 let packet = Packet::CmdDelete(bytes_parts);
+                rw.write_packet(&packet);
+            }
+            "use" => {
+                if parts.len() != 2 {
+                    println!("Error: invalid parameter for use");
+                    continue;
+                }
+
+                let bytes = parts[1].as_bytes().to_vec();
+                let packet = Packet::CmdUse(bytes);
                 rw.write_packet(&packet);
             }
             _ => {

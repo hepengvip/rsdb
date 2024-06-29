@@ -1,7 +1,52 @@
+use std::collections::HashMap;
+use std::mem::drop;
+
 extern crate rocksdb;
 extern crate tempfile;
 
 use rocksdb::{Options, DB};
+
+pub struct MultiDB {
+    storage: HashMap<String, Storage>,
+    root_path: String,
+}
+
+impl MultiDB {
+    pub fn new(root_path: &str) -> Self {
+        Self {
+            storage: HashMap::new(),
+            root_path: root_path.to_string(),
+        }
+    }
+
+    pub fn force_get_db(&mut self, name: &str) -> &Storage {
+        self.attach(name);
+        let s = self.get_db(name);
+        s.unwrap()
+    }
+
+    pub fn get_db(&self, name: &str) -> Option<&Storage> {
+        let s = self.storage.get(name);
+        s
+    }
+
+    pub fn attach(&mut self, name: &str) {
+        let s_opt = self.get_db(name);
+        if let Some(_s) = s_opt {
+            return;
+        }
+        let db_path = format!("{}/{}", self.root_path, name);
+        let storage = Storage::new(&db_path);
+        self.storage.insert(name.to_string(), storage);
+    }
+
+    pub fn dattach(&mut self, name: &str) {
+        let s_opt = self.storage.remove(name);
+        if let Some(s) = s_opt {
+            drop(s);
+        }
+    }
+}
 
 pub struct Storage {
     pub db: DB,

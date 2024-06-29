@@ -11,6 +11,7 @@ pub const TOKEN_LENGTH: usize = 4;
 const CMD_WRITE: u8 = 0x01;
 const CMD_DELETE: u8 = 0x02;
 const CMD_READ: u8 = 0x03;
+const CMD_USE: u8 = 0x04;
 
 // responses
 const RESP_OK: u8 = 0x55;
@@ -24,6 +25,7 @@ pub enum Packet {
     CmdWrite(Vec<Vec<u8>>),
     CmdRead(Vec<Vec<u8>>),
     CmdDelete(Vec<Vec<u8>>),
+    CmdUse(Vec<u8>),
     RespOk(String),
     RespError(String),
     RespToken(Vec<u8>),
@@ -62,6 +64,10 @@ impl<T: Write> PacketWriter<T> {
                 for token in keys {
                     self.write_token(token);
                 }
+            }
+            Packet::CmdUse(name) => {
+                self.write_header(CMD_USE);
+                self.write_token(name);
             }
 
             Packet::RespOk(message) => {
@@ -150,6 +156,15 @@ mod test_packet_writer {
             writer,
             [CMD_DELETE, 0, 2, 0, 0, 0, 3, b'k', b'e', b'y', 0, 0, 0, 3, b'v', b'a', b'l']
         );
+    }
+
+    #[test]
+    fn test_cmd_use() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = Packet::CmdUse(b"world".to_vec());
+        packer.write_packet(&packet);
+        assert_eq!(writer, [CMD_USE, 0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd'],);
     }
 
     #[test]
@@ -297,6 +312,11 @@ impl<T: Read> PacketReader<T> {
                 }
                 return Packet::CmdRead(keys);
             }
+            CMD_USE => {
+                let token = self.read_token();
+                return Packet::CmdUse(token);
+            }
+
             RESP_OK => {
                 let message = self.read_token();
                 let message = String::from_utf8(message).unwrap();
@@ -414,6 +434,17 @@ mod test_packet_reader {
             packet,
             Packet::CmdRead(vec![b"key".to_vec(), b"world".to_vec()]),
         );
+    }
+
+    #[test]
+    fn test_cmd_use() {
+        let bytes = vec![
+            CMD_USE, // packet type id
+            0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd', // token
+        ];
+        let mut packer = PacketReader::new(&bytes[..]);
+        let packet = packer.read_packet();
+        assert_eq!(packet, Packet::CmdUse(b"world".to_vec()),);
     }
 
     #[test]
@@ -852,6 +883,11 @@ impl<T: Read + Write> PacketReaderWriter<T> {
                 }
                 return Ok(Packet::CmdRead(keys));
             }
+            CMD_USE => {
+                let token = self.read_token();
+                return Ok(Packet::CmdUse(token));
+            }
+
             RESP_OK => {
                 let message = self.read_token();
                 let message = String::from_utf8(message).unwrap();
@@ -915,6 +951,10 @@ impl<T: Read + Write> PacketReaderWriter<T> {
                 for token in keys {
                     self.write_token(token);
                 }
+            }
+            Packet::CmdUse(name) => {
+                self.write_header(CMD_USE);
+                self.write_token(name);
             }
 
             Packet::RespOk(message) => {
