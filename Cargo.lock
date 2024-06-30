@@ -418,16 +418,7 @@ name = "rsdb-client"
 version = "0.1.0"
 dependencies = [
  "clap",
- "packet",
- "storage",
-]
-
-[[package]]
-name = "rsdb-rs"
-version = "0.1.0"
-dependencies = [
- "packet",
- "storage",
+ "rsdb_rs",
 ]
 
 [[package]]
@@ -435,6 +426,14 @@ name = "rsdb-server"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "packet",
+ "storage",
+]
+
+[[package]]
+name = "rsdb_rs"
+version = "0.1.0"
+dependencies = [
  "packet",
  "storage",
 ]

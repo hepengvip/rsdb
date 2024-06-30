@@ -1,10 +1,9 @@
 use std::io::{stdin, stdout, Write};
-use std::net::TcpStream;
-
-extern crate packet;
 
 use clap::Parser;
-use packet::{Packet, PacketReaderWriter};
+
+extern crate rsdb_rs;
+use rsdb_rs::{Direction, IteratorMode, RsDBClient};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = "RSDB server")]
@@ -16,17 +15,15 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
+    let mut rsdb_cli = RsDBClient::new();
+    rsdb_cli.connect(&args.addr).unwrap();
+
     let mut buf = String::new();
-    let stream = TcpStream::connect(args.addr).unwrap();
-    let mut rw = PacketReaderWriter::new(stream);
-
-    let mut current_db_name = String::new();
-
     loop {
-        if current_db_name.len() == 0 {
-            print!("(none) ");
+        if let Some(db_name) = rsdb_cli.get_db_name() {
+            print!("({}) ", db_name);
         } else {
-            print!("({}) ", &current_db_name);
+            print!("(none) ");
         }
 
         stdout().flush().unwrap();
@@ -39,19 +36,17 @@ fn main() {
             break;
         }
 
-        // println!("Received: `{}`", valid_part);
         let parts: Vec<&str> = valid_part.split_ascii_whitespace().collect();
         if parts.len() == 0 {
             continue;
         }
 
-        let mut bytes_parts = vec![];
         match parts[0] {
             "help" => {
                 println!(" Commands currently supported:");
-                println!("                 set - Set key:value pairs");
-                println!("                 get - Get value by keys");
-                println!("              delete - Delete by keys");
+                println!("                 set - Set key:value pair");
+                println!("                 get - Get value by key");
+                println!("              delete - Delete by key");
                 println!("                 use - Select/Attached a database");
                 println!("          current_db - Get current database");
                 println!("             list_db - List all the databases currently attached");
@@ -62,65 +57,53 @@ fn main() {
                     "      range_from_asc - Range pairs from a key (inluding the current key)"
                 );
                 println!("    range_end_asc_ex - Range pairs from end");
-                println!("     range_from_desc - Range pairs from a key");
                 println!(
-                    "  range_from_desc_ex - Range pairs from a key (inluding the current key)"
+                    "     range_from_desc - Range pairs from a key (inluding the current key)"
                 );
+                println!("  range_from_desc_ex - Range pairs from a key");
                 continue;
             }
             "set" => {
-                if !validate_dbname(&current_db_name) {
-                    continue;
-                }
-
-                if parts.len() < 3 || parts.len() % 2 == 0 {
+                if parts.len() != 3 {
                     println!("Error: invalid parameter for set");
                     continue;
                 }
-                let pairs = parts.len() / 2;
-
-                for idx in 0..pairs {
-                    let begin = idx * 2;
-                    // println!("    - SET `{}` `{}`", parts[begin + 1], parts[begin + 2]);
-                    bytes_parts.push(parts[begin + 1].as_bytes().to_vec());
-                    bytes_parts.push(parts[begin + 2].as_bytes().to_vec());
+                let rs = rsdb_cli.set(parts[1].as_bytes(), parts[2].as_bytes());
+                if let Err(e) = rs {
+                    println!("Error: {}", e);
+                } else {
+                    println!("Info: Ok.")
                 }
-                let packet = Packet::CmdWrite(bytes_parts);
-                rw.write_packet(&packet);
             }
             "get" => {
-                if !validate_dbname(&current_db_name) {
-                    continue;
-                }
-
-                if parts.len() < 2 {
+                if parts.len() != 2 {
                     println!("Error: invalid parameter for get");
                     continue;
                 }
-
-                for idx in 1..parts.len() {
-                    // println!("    - GET `{}`", parts[idx]);
-                    bytes_parts.push(parts[idx].as_bytes().to_vec());
+                let rs = rsdb_cli.get(parts[1].as_bytes());
+                match rs {
+                    Err(e) => println!("Error: {}", e),
+                    Ok(val) => {
+                        if let Some(val) = val {
+                            let m = String::from_utf8(val).unwrap();
+                            println!("Value: {m}");
+                        } else {
+                            println!("Value: <none>")
+                        }
+                    }
                 }
-                let packet = Packet::CmdRead(bytes_parts);
-                rw.write_packet(&packet);
             }
             "delete" => {
-                if !validate_dbname(&current_db_name) {
-                    continue;
-                }
-
-                if parts.len() < 2 {
+                if parts.len() != 2 {
                     println!("Error: invalid parameter for delete");
                     continue;
                 }
-
-                for idx in 1..parts.len() {
-                    // println!("    - DELETE `{}`", parts[idx]);
-                    bytes_parts.push(parts[idx].as_bytes().to_vec());
+                let rs = rsdb_cli.delete(parts[1].as_bytes());
+                if let Err(e) = rs {
+                    println!("Error: {}", e);
+                } else {
+                    println!("Info: Ok.")
                 }
-                let packet = Packet::CmdDelete(bytes_parts);
-                rw.write_packet(&packet);
             }
             "use" => {
                 if parts.len() != 2 {
@@ -128,9 +111,12 @@ fn main() {
                     continue;
                 }
 
-                let bytes = parts[1].as_bytes().to_vec();
-                let packet = Packet::CmdUse(bytes);
-                rw.write_packet(&packet);
+                let rs = rsdb_cli.use_db(parts[1]);
+                if let Err(e) = rs {
+                    println!("Error: {}", e);
+                } else {
+                    println!("Info: Ok.")
+                }
             }
             "current_db" => {
                 if parts.len() != 1 {
@@ -138,8 +124,17 @@ fn main() {
                     continue;
                 }
 
-                let packet = Packet::CmdCurrentDB();
-                rw.write_packet(&packet);
+                let rs = rsdb_cli.get_current_db();
+                match rs {
+                    Err(e) => println!("Error: {}", e),
+                    Ok(val) => {
+                        if let Some(m) = val {
+                            println!("Value: {m}");
+                        } else {
+                            println!("Value: <none>")
+                        }
+                    }
+                }
             }
             "list_db" => {
                 if parts.len() != 1 {
@@ -147,8 +142,16 @@ fn main() {
                     continue;
                 }
 
-                let packet = Packet::CmdListDb();
-                rw.write_packet(&packet);
+                let rs = rsdb_cli.list_db();
+                match rs {
+                    Err(e) => println!("Error: {}", e),
+                    Ok(val) => {
+                        println!("Activited databases:");
+                        for db_name in val {
+                            println!("  - {db_name}");
+                        }
+                    }
+                }
             }
             "detach" => {
                 if parts.len() != 2 {
@@ -156,9 +159,12 @@ fn main() {
                     continue;
                 }
 
-                let bytes = parts[1].as_bytes().to_vec();
-                let packet = Packet::CmdDetach(bytes);
-                rw.write_packet(&packet);
+                let rs = rsdb_cli.detach_db(parts[1]);
+                if let Err(e) = rs {
+                    println!("Error: {}", e);
+                } else {
+                    println!("Info: Ok.")
+                }
             }
             "range_begin" => {
                 if parts.len() != 2 {
@@ -167,8 +173,19 @@ fn main() {
                 }
 
                 let page_size = parts[1].parse::<u16>().unwrap();
-                let packet = Packet::CmdRangeBegin(page_size);
-                rw.write_packet(&packet);
+                let iter_mode = IteratorMode::Start;
+                let rs = rsdb_cli.range(iter_mode, page_size, false);
+                match rs {
+                    Err(e) => println!("Error: {}", e),
+                    Ok(val) => {
+                        println!("Item pairs:");
+                        for (key, val) in val {
+                            let key = String::from_utf8(key).unwrap();
+                            let val = String::from_utf8(val).unwrap();
+                            println!("  {}: {}", key, val);
+                        }
+                    }
+                }
             }
             "range_end" => {
                 if parts.len() != 2 {
@@ -177,8 +194,19 @@ fn main() {
                 }
 
                 let page_size = parts[1].parse::<u16>().unwrap();
-                let packet = Packet::CmdRangeEnd(page_size);
-                rw.write_packet(&packet);
+                let iter_mode = IteratorMode::End;
+                let rs = rsdb_cli.range(iter_mode, page_size, false);
+                match rs {
+                    Err(e) => println!("Error: {}", e),
+                    Ok(val) => {
+                        println!("Item pairs:");
+                        for (key, val) in val {
+                            let key = String::from_utf8(key).unwrap();
+                            let val = String::from_utf8(val).unwrap();
+                            println!("  {}: {}", key, val);
+                        }
+                    }
+                }
             }
             "range_from_asc" => {
                 if parts.len() != 3 {
@@ -186,9 +214,25 @@ fn main() {
                     continue;
                 }
 
-                let page_size = parts[1].parse::<u16>().unwrap();
-                let packet = Packet::CmdRangeFromAsc(page_size, parts[2].as_bytes().to_vec());
-                rw.write_packet(&packet);
+                let page_size_rs = parts[1].parse::<u16>();
+                let page_size = if let Ok(page_size) = page_size_rs {
+                    page_size
+                } else {
+                    continue;
+                };
+                let iter_mode = IteratorMode::From(parts[2].as_bytes(), Direction::Forward);
+                let rs = rsdb_cli.range(iter_mode, page_size, false);
+                match rs {
+                    Err(e) => println!("Error: {}", e),
+                    Ok(val) => {
+                        println!("Item pairs:");
+                        for (key, val) in val {
+                            let key = String::from_utf8(key).unwrap();
+                            let val = String::from_utf8(val).unwrap();
+                            println!("  {}: {}", key, val);
+                        }
+                    }
+                }
             }
             "range_from_asc_ex" => {
                 if parts.len() != 3 {
@@ -196,9 +240,25 @@ fn main() {
                     continue;
                 }
 
-                let page_size = parts[1].parse::<u16>().unwrap();
-                let packet = Packet::CmdRangeFromAscEx(page_size, parts[2].as_bytes().to_vec());
-                rw.write_packet(&packet);
+                let page_size_rs = parts[1].parse::<u16>();
+                let page_size = if let Ok(page_size) = page_size_rs {
+                    page_size
+                } else {
+                    continue;
+                };
+                let iter_mode = IteratorMode::From(parts[2].as_bytes(), Direction::Forward);
+                let rs = rsdb_cli.range(iter_mode, page_size, true);
+                match rs {
+                    Err(e) => println!("Error: {}", e),
+                    Ok(val) => {
+                        println!("Item pairs:");
+                        for (key, val) in val {
+                            let key = String::from_utf8(key).unwrap();
+                            let val = String::from_utf8(val).unwrap();
+                            println!("  {}: {}", key, val);
+                        }
+                    }
+                }
             }
             "range_from_desc" => {
                 if parts.len() != 3 {
@@ -206,9 +266,25 @@ fn main() {
                     continue;
                 }
 
-                let page_size = parts[1].parse::<u16>().unwrap();
-                let packet = Packet::CmdRangeFromDesc(page_size, parts[2].as_bytes().to_vec());
-                rw.write_packet(&packet);
+                let page_size_rs = parts[1].parse::<u16>();
+                let page_size = if let Ok(page_size) = page_size_rs {
+                    page_size
+                } else {
+                    continue;
+                };
+                let iter_mode = IteratorMode::From(parts[2].as_bytes(), Direction::Reverse);
+                let rs = rsdb_cli.range(iter_mode, page_size, false);
+                match rs {
+                    Err(e) => println!("Error: {}", e),
+                    Ok(val) => {
+                        println!("Item pairs:");
+                        for (key, val) in val {
+                            let key = String::from_utf8(key).unwrap();
+                            let val = String::from_utf8(val).unwrap();
+                            println!("  {}: {}", key, val);
+                        }
+                    }
+                }
             }
             "range_from_desc_ex" => {
                 if parts.len() != 3 {
@@ -216,9 +292,25 @@ fn main() {
                     continue;
                 }
 
-                let page_size = parts[1].parse::<u16>().unwrap();
-                let packet = Packet::CmdRangeFromDescEx(page_size, parts[2].as_bytes().to_vec());
-                rw.write_packet(&packet);
+                let page_size_rs = parts[1].parse::<u16>();
+                let page_size = if let Ok(page_size) = page_size_rs {
+                    page_size
+                } else {
+                    continue;
+                };
+                let iter_mode = IteratorMode::From(parts[2].as_bytes(), Direction::Reverse);
+                let rs = rsdb_cli.range(iter_mode, page_size, true);
+                match rs {
+                    Err(e) => println!("Error: {}", e),
+                    Ok(val) => {
+                        println!("Item pairs:");
+                        for (key, val) in val {
+                            let key = String::from_utf8(key).unwrap();
+                            let val = String::from_utf8(val).unwrap();
+                            println!("  {}: {}", key, val);
+                        }
+                    }
+                }
             }
             _ => {
                 println!("Error: unknown command `{}`", parts[0]);
@@ -226,68 +318,6 @@ fn main() {
             }
         }
 
-        let resp = rw.read_packet().unwrap();
-        match resp {
-            Packet::RespOk(ref msg) => {
-                println!("MessageOk: {}", msg);
-
-                // current db
-                if parts[0] == "use" {
-                    current_db_name = parts[1].to_string();
-                }
-
-                // detach
-                if parts[0] == "detach" && current_db_name == parts[1].to_string() {
-                    current_db_name.clear();
-                }
-            }
-            Packet::RespError(ref msg) => {
-                println!("MessageError: {}", msg);
-            }
-            Packet::RespToken(ref data) => {
-                let msg = String::from_utf8_lossy(data.as_slice());
-                println!("Token: {}", msg);
-            }
-            Packet::RespTokens(ref data) => {
-                println!("Tokens:");
-                for part in data {
-                    // let msg = String::from_utf8_lossy(part.as_slice());
-                    let token = if part.len() == 0 {
-                        String::from("<None>")
-                    } else {
-                        String::from_utf8(part.to_vec()).unwrap()
-                    };
-                    println!("    - {}", token);
-                }
-            }
-            Packet::RespPairs(ref data) => {
-                println!("Pairs:");
-                for (k, v) in data.iter().enumerate() {
-                    let token = if v.len() == 0 {
-                        String::from("<None>")
-                    } else {
-                        String::from_utf8(v.to_vec()).unwrap()
-                    };
-                    if k % 2 == 0 {
-                        print!("    - {} => ", token);
-                    } else {
-                        println!("{}", token);
-                    }
-                }
-            }
-            _ => {
-                println!("Error: unknown response {:?}", resp);
-            }
-        }
-
         stdout().flush().unwrap();
     }
-}
-
-fn validate_dbname(name: &str) -> bool {
-    if name.len() == 0 {
-        println!("Error: no db selected");
-        return false;
-    }
-    true
 }

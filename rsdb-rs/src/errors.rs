@@ -1,6 +1,6 @@
-use std::io::Error as IOErr;
 use std::error::Error;
 use std::fmt::{self, Display, Formatter};
+use std::io::Error as IOErr;
 
 #[derive(Debug)]
 pub enum RsDBError {
@@ -10,7 +10,7 @@ pub enum RsDBError {
     NoDbSelected,
 }
 
-impl Error for RsDBError{}
+impl Error for RsDBError {}
 
 impl From<IOErr> for RsDBError {
     fn from(e: IOErr) -> Self {
