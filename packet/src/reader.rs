@@ -51,6 +51,40 @@ impl<T: Read> PacketReader<T> {
                 packet::Packet::CmdUse(token)
             }
             packet::CMD_CURRENT_DB => packet::Packet::CmdCurrentDB(),
+            packet::CMD_LIST_DB => packet::Packet::CmdListDb(),
+            packet::CMD_DETACH => {
+                let token = self.read_token();
+                packet::Packet::CmdDetach(token)
+            }
+
+            packet::CMD_RANGE_BEGIN => {
+                let page_size = self.read_size();
+                packet::Packet::CmdRangeBegin(page_size)
+            }
+            packet::CMD_RANGE_END => {
+                let page_size = self.read_size();
+                packet::Packet::CmdRangeEnd(page_size)
+            }
+            packet::CMD_RANGE_FROM_ASC => {
+                let page_size = self.read_size();
+                let token = self.read_token();
+                packet::Packet::CmdRangeFromAsc(page_size, token)
+            }
+            packet::CMD_RANGE_FROM_ASC_EX => {
+                let page_size = self.read_size();
+                let token = self.read_token();
+                packet::Packet::CmdRangeFromAscEx(page_size, token)
+            }
+            packet::CMD_RANGE_FROM_DESC => {
+                let page_size = self.read_size();
+                let token = self.read_token();
+                packet::Packet::CmdRangeFromDesc(page_size, token)
+            }
+            packet::CMD_RANGE_FROM_DESC_EX => {
+                let page_size = self.read_size();
+                let token = self.read_token();
+                packet::Packet::CmdRangeFromDescEx(page_size, token)
+            }
 
             packet::RESP_OK => {
                 let message = self.read_token();
@@ -247,6 +281,161 @@ mod test_packet_reader {
         let mut packer = PacketReader::new(&bytes[..]);
         let packet = packer.read_packet();
         assert_eq!(packet, packet::Packet::CmdUse(b"world".to_vec()),);
+    }
+
+    #[test]
+    fn test_cmd_current_db() {
+        let bytes = vec![packet::CMD_CURRENT_DB];
+        let mut packer = PacketReader::new(&bytes[..]);
+        let p = packer.read_packet();
+        assert_eq!(p, packet::Packet::CmdCurrentDB());
+    }
+
+    #[test]
+    fn test_cmd_list_db() {
+        let bytes = vec![packet::CMD_LIST_DB];
+        let mut packer = PacketReader::new(&bytes[..]);
+        let p = packer.read_packet();
+        assert_eq!(p, packet::Packet::CmdListDb());
+    }
+
+    #[test]
+    fn test_cmd_detach() {
+        let bytes = vec![
+            packet::CMD_DETACH, // packet type id
+            0,
+            0,
+            0,
+            5,
+            b'w',
+            b'o',
+            b'r',
+            b'l',
+            b'd', // token
+        ];
+        let mut packer = PacketReader::new(&bytes[..]);
+        let packet = packer.read_packet();
+        assert_eq!(packet, packet::Packet::CmdDetach(b"world".to_vec()),);
+    }
+
+    #[test]
+    fn test_cmd_range_begin() {
+        let bytes = vec![
+            packet::CMD_RANGE_BEGIN, // packet type id
+            2,
+            16,
+        ];
+        let mut packer = PacketReader::new(&bytes[..]);
+        let packet = packer.read_packet();
+        assert_eq!(packet, packet::Packet::CmdRangeBegin(0x0210));
+    }
+
+    #[test]
+    fn test_cmd_range_end() {
+        let bytes = vec![
+            packet::CMD_RANGE_END, // packet type id
+            2,
+            16,
+        ];
+        let mut packer = PacketReader::new(&bytes[..]);
+        let packet = packer.read_packet();
+        assert_eq!(packet, packet::Packet::CmdRangeEnd(0x0210));
+    }
+
+    #[test]
+    fn test_cmd_range_from_asc() {
+        let bytes = vec![
+            packet::CMD_RANGE_FROM_ASC, // packet type id
+            2,
+            16, // size
+            0,
+            0,
+            0,
+            5,
+            b'w',
+            b'o',
+            b'r',
+            b'l',
+            b'd', // token
+        ];
+        let mut packer = PacketReader::new(&bytes[..]);
+        let packet = packer.read_packet();
+        assert_eq!(
+            packet,
+            packet::Packet::CmdRangeFromAsc(0x0210, b"world".to_vec())
+        );
+    }
+
+    #[test]
+    fn test_cmd_range_from_asc_ex() {
+        let bytes = vec![
+            packet::CMD_RANGE_FROM_ASC_EX, // packet type id
+            2,
+            16, // size
+            0,
+            0,
+            0,
+            5,
+            b'w',
+            b'o',
+            b'r',
+            b'l',
+            b'd', // token
+        ];
+        let mut packer = PacketReader::new(&bytes[..]);
+        let packet = packer.read_packet();
+        assert_eq!(
+            packet,
+            packet::Packet::CmdRangeFromAscEx(0x0210, b"world".to_vec())
+        );
+    }
+
+    #[test]
+    fn test_cmd_range_from_desc() {
+        let bytes = vec![
+            packet::CMD_RANGE_FROM_DESC, // packet type id
+            2,
+            16, // size
+            0,
+            0,
+            0,
+            5,
+            b'w',
+            b'o',
+            b'r',
+            b'l',
+            b'd', // token
+        ];
+        let mut packer = PacketReader::new(&bytes[..]);
+        let packet = packer.read_packet();
+        assert_eq!(
+            packet,
+            packet::Packet::CmdRangeFromDesc(0x0210, b"world".to_vec())
+        );
+    }
+
+    #[test]
+    fn test_cmd_range_from_desc_ex() {
+        let bytes = vec![
+            packet::CMD_RANGE_FROM_DESC_EX, // packet type id
+            2,
+            16, // size
+            0,
+            0,
+            0,
+            5,
+            b'w',
+            b'o',
+            b'r',
+            b'l',
+            b'd', // token
+        ];
+        let mut packer = PacketReader::new(&bytes[..]);
+        let packet = packer.read_packet();
+        assert_eq!(
+            packet,
+            packet::Packet::CmdRangeFromDescEx(0x0210, b"world".to_vec())
+        );
     }
 
     #[test]

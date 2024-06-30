@@ -8,7 +8,7 @@ extern crate storage;
 
 use clap::Parser;
 use packet::{Packet, PacketReaderWriter};
-use storage::MultiDB;
+use storage::{Direction, IteratorMode, MultiDB};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = "RSDB client utility")]
@@ -89,10 +89,12 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
         let resp = match packet.unwrap() {
             Packet::CmdDelete(ref cmd) => {
                 println!("Received delete command: {:?}", cmd);
-                for key in cmd {
+                {
                     let msdb = mdb.lock().unwrap();
                     let db = msdb.get_db(&current_db_name).unwrap();
-                    db.delete(key);
+                    for key in cmd {
+                        db.delete(key);
+                    }
                 }
                 Packet::RespOk("Ok.".to_string())
             }
@@ -100,9 +102,13 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 println!("Received read command: {:?}", cmd);
                 let mut values = Vec::new();
                 for key in cmd {
-                    let msdb = mdb.lock().unwrap();
-                    let db = msdb.get_db(&current_db_name).unwrap();
-                    let value = match db.get(key) {
+                    let db_rs: Option<Vec<u8>>;
+                    {
+                        let msdb = mdb.lock().unwrap();
+                        let db = msdb.get_db(&current_db_name).unwrap();
+                        db_rs = db.get(key);
+                    }
+                    let value = match db_rs {
                         Some(value) => value,
                         None => Vec::new(),
                     };
@@ -115,9 +121,11 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 let pairs = cmd.len() / 2;
                 for idx in 0..pairs {
                     let begin = idx * 2;
-                    let msdb = mdb.lock().unwrap();
-                    let db = msdb.get_db(&current_db_name).unwrap();
-                    db.set(cmd.get(begin).unwrap(), cmd.get(begin + 1).unwrap())
+                    {
+                        let msdb = mdb.lock().unwrap();
+                        let db = msdb.get_db(&current_db_name).unwrap();
+                        db.set(cmd.get(begin).unwrap(), cmd.get(begin + 1).unwrap())
+                    }
                 }
                 Packet::RespOk("Ok.".to_string())
             }
@@ -126,14 +134,138 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 current_db_name.clear();
                 current_db_name = String::from_utf8(cmd).unwrap();
 
-                let mut msdb = mdb.lock().unwrap();
-                msdb.attach(&current_db_name);
+                {
+                    let mut msdb = mdb.lock().unwrap();
+                    msdb.attach(&current_db_name);
+                }
 
                 Packet::RespOk("Ok.".to_string())
             }
             Packet::CmdCurrentDB() => {
                 println!("Received current db command");
                 Packet::RespToken(current_db_name.as_bytes().to_vec())
+            }
+            Packet::CmdListDb() => {
+                println!("Received list db command");
+                // Packet::RespToken(current_db_name.as_bytes().to_vec())
+                let mut db_names = vec![];
+                {
+                    let msdb = mdb.lock().unwrap();
+                    for name in msdb.list_db() {
+                        db_names.push(name.to_owned().to_vec())
+                    }
+                }
+                Packet::RespTokens(db_names)
+            }
+            Packet::CmdDetach(cmd) => {
+                println!("Received detach command: {:?}", cmd);
+                let detach_db = String::from_utf8(cmd).unwrap();
+                if detach_db == current_db_name {
+                    current_db_name.clear();
+                }
+
+                {
+                    let mut msdb = mdb.lock().unwrap();
+                    msdb.detach(&detach_db);
+                }
+
+                Packet::RespOk("Ok.".to_string())
+            }
+            Packet::CmdRangeBegin(page_size) => {
+                println!("Received range(begin) command: {:?}", page_size);
+                let msdb = mdb.lock().unwrap();
+                let db_wrap = msdb.get_db(&current_db_name).unwrap();
+                let it = db_wrap.this_db().iterator(IteratorMode::Start);
+
+                let mut tokens = vec![];
+                for rs in it.take(page_size as usize) {
+                    let (k, v) = rs.unwrap();
+                    tokens.push(k.to_vec());
+                    tokens.push(v.to_vec());
+                }
+                Packet::RespPairs(tokens)
+            }
+            Packet::CmdRangeEnd(page_size) => {
+                println!("Received range(end) command: {:?}", page_size);
+                let msdb = mdb.lock().unwrap();
+                let db_wrap = msdb.get_db(&current_db_name).unwrap();
+
+                let mut tokens = vec![];
+                let it = db_wrap.this_db().iterator(IteratorMode::End);
+                for rs in it.take(page_size as usize) {
+                    let (k, v) = rs.unwrap();
+                    tokens.push(k.to_vec());
+                    tokens.push(v.to_vec());
+                }
+                Packet::RespPairs(tokens)
+            }
+            Packet::CmdRangeFromAsc(page_size, key) => {
+                println!("Received range(from asc) command: {:?}", page_size);
+                let msdb = mdb.lock().unwrap();
+                let db_wrap = msdb.get_db(&current_db_name).unwrap();
+
+                let mut tokens = vec![];
+                let iter_mode = IteratorMode::From(key.as_slice(), Direction::Forward);
+                let it = db_wrap.this_db().iterator(iter_mode);
+                for rs in it.take(page_size as usize) {
+                    let (k, v) = rs.unwrap();
+                    tokens.push(k.to_vec());
+                    tokens.push(v.to_vec());
+                }
+                Packet::RespPairs(tokens)
+            }
+            Packet::CmdRangeFromAscEx(page_size, key) => {
+                println!("Received range(from asc) command: {:?}", page_size);
+                let msdb = mdb.lock().unwrap();
+                let db_wrap = msdb.get_db(&current_db_name).unwrap();
+
+                let mut tokens = vec![];
+                let iter_mode = IteratorMode::From(key.as_slice(), Direction::Forward);
+                let it = db_wrap.this_db().iterator(iter_mode);
+                for (idx, rs) in it.take(page_size as usize + 1).enumerate() {
+                    let (k, v) = rs.unwrap();
+                    let k_vec = k.to_vec();
+                    if idx == 0 && k_vec == key {
+                        continue;
+                    }
+                    tokens.push(k_vec);
+                    tokens.push(v.to_vec());
+                }
+                Packet::RespPairs(tokens)
+            }
+            Packet::CmdRangeFromDesc(page_size, key) => {
+                println!("Received range(from asc) command: {:?}", page_size);
+                let msdb = mdb.lock().unwrap();
+                let db_wrap = msdb.get_db(&current_db_name).unwrap();
+
+                let mut tokens = vec![];
+                let iter_mode = IteratorMode::From(key.as_slice(), Direction::Reverse);
+                let it = db_wrap.this_db().iterator(iter_mode);
+                for rs in it.take(page_size as usize) {
+                    let (k, v) = rs.unwrap();
+                    tokens.push(k.to_vec());
+                    tokens.push(v.to_vec());
+                }
+                Packet::RespPairs(tokens)
+            }
+            Packet::CmdRangeFromDescEx(page_size, key) => {
+                println!("Received range(from asc) command: {:?}", page_size);
+                let msdb = mdb.lock().unwrap();
+                let db_wrap = msdb.get_db(&current_db_name).unwrap();
+
+                let mut tokens = vec![];
+                let iter_mode = IteratorMode::From(key.as_slice(), Direction::Reverse);
+                let it = db_wrap.this_db().iterator(iter_mode);
+                for (idx, rs) in it.take(page_size as usize + 1).enumerate() {
+                    let (k, v) = rs.unwrap();
+                    let k_vec = k.to_vec();
+                    if idx == 0 && k_vec == key {
+                        continue;
+                    }
+                    tokens.push(k_vec);
+                    tokens.push(v.to_vec());
+                }
+                Packet::RespPairs(tokens)
             }
             _ => Packet::RespError("unknown command".to_string()),
         };

@@ -47,6 +47,27 @@ fn main() {
 
         let mut bytes_parts = vec![];
         match parts[0] {
+            "help" => {
+                println!(" Commands currently supported:");
+                println!("                 set - Set key:value pairs");
+                println!("                 get - Get value by keys");
+                println!("              delete - Delete by keys");
+                println!("                 use - Select/Attached a database");
+                println!("          current_db - Get current database");
+                println!("             list_db - List all the databases currently attached");
+                println!("              detach - Detach a database\n");
+                println!("         range_begin - Range pairs from begin");
+                println!("           range_end - Range pairs from a key");
+                println!(
+                    "      range_from_asc - Range pairs from a key (inluding the current key)"
+                );
+                println!("    range_end_asc_ex - Range pairs from end");
+                println!("     range_from_desc - Range pairs from a key");
+                println!(
+                    "  range_from_desc_ex - Range pairs from a key (inluding the current key)"
+                );
+                continue;
+            }
             "set" => {
                 if !validate_dbname(&current_db_name) {
                     continue;
@@ -120,6 +141,85 @@ fn main() {
                 let packet = Packet::CmdCurrentDB();
                 rw.write_packet(&packet);
             }
+            "list_db" => {
+                if parts.len() != 1 {
+                    println!("Error: invalid parameter for list_db");
+                    continue;
+                }
+
+                let packet = Packet::CmdListDb();
+                rw.write_packet(&packet);
+            }
+            "detach" => {
+                if parts.len() != 2 {
+                    println!("Error: invalid parameter for detach");
+                    continue;
+                }
+
+                let bytes = parts[1].as_bytes().to_vec();
+                let packet = Packet::CmdDetach(bytes);
+                rw.write_packet(&packet);
+            }
+            "range_begin" => {
+                if parts.len() != 2 {
+                    println!("Error: invalid parameter for range_begin");
+                    continue;
+                }
+
+                let page_size = parts[1].parse::<u16>().unwrap();
+                let packet = Packet::CmdRangeBegin(page_size);
+                rw.write_packet(&packet);
+            }
+            "range_end" => {
+                if parts.len() != 2 {
+                    println!("Error: invalid parameter for range_end");
+                    continue;
+                }
+
+                let page_size = parts[1].parse::<u16>().unwrap();
+                let packet = Packet::CmdRangeEnd(page_size);
+                rw.write_packet(&packet);
+            }
+            "range_from_asc" => {
+                if parts.len() != 3 {
+                    println!("Error: invalid parameter for range_from_asc");
+                    continue;
+                }
+
+                let page_size = parts[1].parse::<u16>().unwrap();
+                let packet = Packet::CmdRangeFromAsc(page_size, parts[2].as_bytes().to_vec());
+                rw.write_packet(&packet);
+            }
+            "range_from_asc_ex" => {
+                if parts.len() != 3 {
+                    println!("Error: invalid parameter for range_from_asc");
+                    continue;
+                }
+
+                let page_size = parts[1].parse::<u16>().unwrap();
+                let packet = Packet::CmdRangeFromAscEx(page_size, parts[2].as_bytes().to_vec());
+                rw.write_packet(&packet);
+            }
+            "range_from_desc" => {
+                if parts.len() != 3 {
+                    println!("Error: invalid parameter for range_from_asc");
+                    continue;
+                }
+
+                let page_size = parts[1].parse::<u16>().unwrap();
+                let packet = Packet::CmdRangeFromDesc(page_size, parts[2].as_bytes().to_vec());
+                rw.write_packet(&packet);
+            }
+            "range_from_desc_ex" => {
+                if parts.len() != 3 {
+                    println!("Error: invalid parameter for range_from_asc");
+                    continue;
+                }
+
+                let page_size = parts[1].parse::<u16>().unwrap();
+                let packet = Packet::CmdRangeFromDescEx(page_size, parts[2].as_bytes().to_vec());
+                rw.write_packet(&packet);
+            }
             _ => {
                 println!("Error: unknown command `{}`", parts[0]);
                 continue;
@@ -134,6 +234,11 @@ fn main() {
                 // current db
                 if parts[0] == "use" {
                     current_db_name = parts[1].to_string();
+                }
+
+                // detach
+                if parts[0] == "detach" && current_db_name == parts[1].to_string() {
+                    current_db_name.clear();
                 }
             }
             Packet::RespError(ref msg) => {
@@ -163,7 +268,7 @@ fn main() {
                     } else {
                         String::from_utf8(v.to_vec()).unwrap()
                     };
-                    if k % 2 == 1 {
+                    if k % 2 == 0 {
                         print!("    - {} => ", token);
                     } else {
                         println!("{}", token);

@@ -4,6 +4,7 @@ use std::mem::drop;
 extern crate rocksdb;
 extern crate tempfile;
 
+pub use rocksdb::{Direction, IteratorMode};
 use rocksdb::{Options, DB};
 
 pub struct MultiDB {
@@ -40,11 +41,15 @@ impl MultiDB {
         self.storage.insert(name.to_string(), storage);
     }
 
-    pub fn dattach(&mut self, name: &str) {
+    pub fn detach(&mut self, name: &str) {
         let s_opt = self.storage.remove(name);
         if let Some(s) = s_opt {
             drop(s);
         }
+    }
+
+    pub fn list_db(&self) -> Vec<&[u8]> {
+        self.storage.iter().map(|(k, _v)| k.as_bytes()).collect()
     }
 }
 
@@ -76,6 +81,10 @@ impl Storage {
 
     pub fn delete(&self, key: &[u8]) {
         self.db.delete(key).unwrap();
+    }
+
+    pub fn this_db(&self) -> &DB {
+        &self.db
     }
 }
 

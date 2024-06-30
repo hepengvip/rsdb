@@ -51,6 +51,40 @@ impl<T: Read + Write> PacketReaderWriter<T> {
                 Ok(packet::Packet::CmdUse(token))
             }
             packet::CMD_CURRENT_DB => Ok(packet::Packet::CmdCurrentDB()),
+            packet::CMD_LIST_DB => Ok(packet::Packet::CmdListDb()),
+            packet::CMD_DETACH => {
+                let token = self.read_token();
+                Ok(packet::Packet::CmdDetach(token))
+            }
+
+            packet::CMD_RANGE_BEGIN => {
+                let page_size = self.read_size();
+                Ok(packet::Packet::CmdRangeBegin(page_size))
+            }
+            packet::CMD_RANGE_END => {
+                let page_size = self.read_size();
+                Ok(packet::Packet::CmdRangeEnd(page_size))
+            }
+            packet::CMD_RANGE_FROM_ASC => {
+                let page_size = self.read_size();
+                let token = self.read_token();
+                Ok(packet::Packet::CmdRangeFromAsc(page_size, token))
+            }
+            packet::CMD_RANGE_FROM_ASC_EX => {
+                let page_size = self.read_size();
+                let token = self.read_token();
+                Ok(packet::Packet::CmdRangeFromAscEx(page_size, token))
+            }
+            packet::CMD_RANGE_FROM_DESC => {
+                let page_size = self.read_size();
+                let token = self.read_token();
+                Ok(packet::Packet::CmdRangeFromDesc(page_size, token))
+            }
+            packet::CMD_RANGE_FROM_DESC_EX => {
+                let page_size = self.read_size();
+                let token = self.read_token();
+                Ok(packet::Packet::CmdRangeFromDescEx(page_size, token))
+            }
 
             packet::RESP_OK => {
                 let message = self.read_token();
@@ -122,6 +156,40 @@ impl<T: Read + Write> PacketReaderWriter<T> {
             }
             packet::Packet::CmdCurrentDB() => {
                 self.write_header(packet::CMD_CURRENT_DB);
+            }
+            packet::Packet::CmdListDb() => self.write_header(packet::CMD_LIST_DB),
+            packet::Packet::CmdDetach(name) => {
+                self.write_header(packet::CMD_DETACH);
+                self.write_token(name);
+            }
+
+            packet::Packet::CmdRangeBegin(page_size) => {
+                self.write_header(packet::CMD_RANGE_BEGIN);
+                self.write_size(page_size.to_owned());
+            }
+            packet::Packet::CmdRangeEnd(page_size) => {
+                self.write_header(packet::CMD_RANGE_END);
+                self.write_size(page_size.to_owned());
+            }
+            packet::Packet::CmdRangeFromAsc(page_size, data) => {
+                self.write_header(packet::CMD_RANGE_FROM_ASC);
+                self.write_size(page_size.to_owned());
+                self.write_token(data);
+            }
+            packet::Packet::CmdRangeFromAscEx(page_size, data) => {
+                self.write_header(packet::CMD_RANGE_FROM_ASC_EX);
+                self.write_size(page_size.to_owned());
+                self.write_token(data);
+            }
+            packet::Packet::CmdRangeFromDesc(page_size, data) => {
+                self.write_header(packet::CMD_RANGE_FROM_DESC);
+                self.write_size(page_size.to_owned());
+                self.write_token(data);
+            }
+            packet::Packet::CmdRangeFromDescEx(page_size, data) => {
+                self.write_header(packet::CMD_RANGE_FROM_DESC_EX);
+                self.write_size(page_size.to_owned());
+                self.write_token(data);
             }
 
             packet::Packet::RespOk(message) => {

@@ -43,6 +43,40 @@ impl<T: Write> PacketWriter<T> {
             packet::Packet::CmdCurrentDB() => {
                 self.write_header(packet::CMD_CURRENT_DB);
             }
+            packet::Packet::CmdListDb() => self.write_header(packet::CMD_LIST_DB),
+            packet::Packet::CmdDetach(name) => {
+                self.write_header(packet::CMD_DETACH);
+                self.write_token(name);
+            }
+
+            packet::Packet::CmdRangeBegin(page_size) => {
+                self.write_header(packet::CMD_RANGE_BEGIN);
+                self.write_size(page_size.to_owned());
+            }
+            packet::Packet::CmdRangeEnd(page_size) => {
+                self.write_header(packet::CMD_RANGE_END);
+                self.write_size(page_size.to_owned());
+            }
+            packet::Packet::CmdRangeFromAsc(page_size, data) => {
+                self.write_header(packet::CMD_RANGE_FROM_ASC);
+                self.write_size(page_size.to_owned());
+                self.write_token(data);
+            }
+            packet::Packet::CmdRangeFromAscEx(page_size, data) => {
+                self.write_header(packet::CMD_RANGE_FROM_ASC_EX);
+                self.write_size(page_size.to_owned());
+                self.write_token(data);
+            }
+            packet::Packet::CmdRangeFromDesc(page_size, data) => {
+                self.write_header(packet::CMD_RANGE_FROM_DESC);
+                self.write_size(page_size.to_owned());
+                self.write_token(data);
+            }
+            packet::Packet::CmdRangeFromDescEx(page_size, data) => {
+                self.write_header(packet::CMD_RANGE_FROM_DESC_EX);
+                self.write_size(page_size.to_owned());
+                self.write_token(data);
+            }
 
             packet::Packet::RespOk(message) => {
                 self.write_header(packet::RESP_OK);
@@ -204,6 +238,151 @@ mod test_packet_writer {
         assert_eq!(
             writer,
             [packet::CMD_USE, 0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd'],
+        );
+    }
+    #[test]
+    fn test_cmd_current_db() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = packet::Packet::CmdCurrentDB();
+        packer.write_packet(&packet);
+        assert_eq!(writer, [packet::CMD_CURRENT_DB],);
+    }
+    #[test]
+    fn test_cmd_list_db() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = packet::Packet::CmdListDb();
+        packer.write_packet(&packet);
+        assert_eq!(writer, [packet::CMD_LIST_DB],);
+    }
+    #[test]
+    fn test_cmd_detach() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = packet::Packet::CmdDetach(b"world".to_vec());
+        packer.write_packet(&packet);
+        assert_eq!(
+            writer,
+            [packet::CMD_DETACH, 0, 0, 0, 5, b'w', b'o', b'r', b'l', b'd'],
+        );
+    }
+
+    #[test]
+    fn test_cmd_range_begin() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = packet::Packet::CmdRangeBegin(0x0210);
+        packer.write_packet(&packet);
+        assert_eq!(writer, [packet::CMD_RANGE_BEGIN, 2, 16],);
+    }
+
+    #[test]
+    fn test_cmd_range_end() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = packet::Packet::CmdRangeBegin(0x0210);
+        packer.write_packet(&packet);
+        assert_eq!(writer, [packet::CMD_RANGE_BEGIN, 2, 16],);
+    }
+
+    #[test]
+    fn test_cmd_range_from_asc() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = packet::Packet::CmdRangeFromAsc(0x0210, b"world".to_vec());
+        packer.write_packet(&packet);
+        assert_eq!(
+            writer,
+            [
+                packet::CMD_RANGE_FROM_ASC,
+                2,
+                16,
+                0,
+                0,
+                0,
+                5,
+                b'w',
+                b'o',
+                b'r',
+                b'l',
+                b'd'
+            ],
+        );
+    }
+
+    #[test]
+    fn test_cmd_range_from_asc_ex() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = packet::Packet::CmdRangeFromAscEx(0x0210, b"world".to_vec());
+        packer.write_packet(&packet);
+        assert_eq!(
+            writer,
+            [
+                packet::CMD_RANGE_FROM_ASC_EX,
+                2,
+                16,
+                0,
+                0,
+                0,
+                5,
+                b'w',
+                b'o',
+                b'r',
+                b'l',
+                b'd'
+            ],
+        );
+    }
+
+    #[test]
+    fn test_cmd_range_from_desc() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = packet::Packet::CmdRangeFromDesc(0x0210, b"world".to_vec());
+        packer.write_packet(&packet);
+        assert_eq!(
+            writer,
+            [
+                packet::CMD_RANGE_FROM_DESC,
+                2,
+                16,
+                0,
+                0,
+                0,
+                5,
+                b'w',
+                b'o',
+                b'r',
+                b'l',
+                b'd'
+            ],
+        );
+    }
+
+    #[test]
+    fn test_cmd_range_from_desc_ex() {
+        let mut writer = Vec::new();
+        let mut packer = PacketWriter::new(&mut writer);
+        let packet = packet::Packet::CmdRangeFromDescEx(0x0210, b"world".to_vec());
+        packer.write_packet(&packet);
+        assert_eq!(
+            writer,
+            [
+                packet::CMD_RANGE_FROM_DESC_EX,
+                2,
+                16,
+                0,
+                0,
+                0,
+                5,
+                b'w',
+                b'o',
+                b'r',
+                b'l',
+                b'd'
+            ],
         );
     }
 
