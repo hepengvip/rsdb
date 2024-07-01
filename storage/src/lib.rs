@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::mem::drop;
+use std::sync::Arc;
 
 extern crate rocksdb;
 extern crate tempfile;
@@ -8,7 +9,7 @@ pub use rocksdb::{Direction, IteratorMode};
 use rocksdb::{Options, DB};
 
 pub struct MultiDB {
-    storage: HashMap<String, Storage>,
+    storage: HashMap<String, Arc<Storage>>,
     root_path: String,
 }
 
@@ -20,15 +21,13 @@ impl MultiDB {
         }
     }
 
-    pub fn force_get_db(&mut self, name: &str) -> &Storage {
-        self.attach(name);
-        let s = self.get_db(name);
-        s.unwrap()
-    }
-
-    pub fn get_db(&self, name: &str) -> Option<&Storage> {
+    pub fn get_db(&self, name: &str) -> Option<Arc<Storage>> {
         let s = self.storage.get(name);
-        s
+        if let Some(s) = s {
+            Some(s.clone())
+        } else {
+            None
+        }
     }
 
     pub fn attach(&mut self, name: &str) {
@@ -37,8 +36,9 @@ impl MultiDB {
             return;
         }
         let db_path = format!("{}/{}", self.root_path, name);
+        // let db = DB::open_default(&db_path).unwrap();
         let storage = Storage::new(&db_path);
-        self.storage.insert(name.to_string(), storage);
+        self.storage.insert(name.to_string(), Arc::new(storage));
     }
 
     pub fn detach(&mut self, name: &str) {
@@ -55,6 +55,8 @@ impl MultiDB {
 
 pub struct Storage {
     pub db: DB,
+    pub path: Option<String>,
+    pub temp: bool,
 }
 
 impl Storage {
@@ -62,13 +64,13 @@ impl Storage {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         let db = DB::open(&opts, path).unwrap();
-        Self { db }
+        Self { db, path: Some(path.to_string()), temp: false }
     }
 
     pub fn new_with_temp_dir(prefix: &str) -> Self {
         let dir = tempfile::Builder::new().prefix(prefix).tempdir().unwrap();
         let db = DB::open_default(dir.path()).unwrap();
-        Self { db }
+        Self { db, path: None, temp: true }
     }
 
     pub fn set(&self, key: &[u8], value: &[u8]) {
