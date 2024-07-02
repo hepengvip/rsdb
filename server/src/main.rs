@@ -13,7 +13,7 @@ use storage::{Direction, IteratorMode, MultiDB};
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = "RSDB client utility")]
 struct Args {
-    #[arg(short, long, default_value_t=String::from("127.0.0.1:1935"))]
+    #[arg(short, long, default_value_t=String::from("127.0.0.1:10110"))]
     addr: String,
 
     #[arg(short, long)]
@@ -100,9 +100,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                         }
                         Packet::RespOk("Ok.".to_string())
                     }
-                    None => {
-                        Packet::RespError("No such database.".to_string())
-                    }
+                    None => Packet::RespError("No such database.".to_string()),
                 }
             }
             Packet::CmdRead(ref cmd) => {
@@ -124,9 +122,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                         }
                         Packet::RespTokens(values)
                     }
-                    None => {
-                        Packet::RespError("No such database.".to_string())
-                    }
+                    None => Packet::RespError("No such database.".to_string()),
                 }
             }
             Packet::CmdWrite(ref cmd) => {
@@ -144,9 +140,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                         }
                         Packet::RespOk("Ok.".to_string())
                     }
-                    None => {
-                        Packet::RespError("No such database.".to_string())
-                    }
+                    None => Packet::RespError("No such database.".to_string()),
                 }
             }
             Packet::CmdUse(cmd) => {
@@ -208,9 +202,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                         }
                         Packet::RespPairs(tokens)
                     }
-                    None => {
-                        Packet::RespError("No such database.".to_string())
-                    }
+                    None => Packet::RespError("No such database.".to_string()),
                 }
             }
             Packet::CmdRangeEnd(page_size) => {
@@ -230,9 +222,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                         }
                         Packet::RespPairs(tokens)
                     }
-                    None => {
-                        Packet::RespError("No such database.".to_string())
-                    }
+                    None => Packet::RespError("No such database.".to_string()),
                 }
             }
             Packet::CmdRangeFromAsc(page_size, key) => {
@@ -253,9 +243,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                         }
                         Packet::RespPairs(tokens)
                     }
-                    None => {
-                        Packet::RespError("No such database.".to_string())
-                    }
+                    None => Packet::RespError("No such database.".to_string()),
                 }
             }
             Packet::CmdRangeFromAscEx(page_size, key) => {
@@ -280,9 +268,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                         }
                         Packet::RespPairs(tokens)
                     }
-                    None => {
-                        Packet::RespError("No such database.".to_string())
-                    }
+                    None => Packet::RespError("No such database.".to_string()),
                 }
             }
             Packet::CmdRangeFromDesc(page_size, key) => {
@@ -303,9 +289,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                         }
                         Packet::RespPairs(tokens)
                     }
-                    None => {
-                        Packet::RespError("No such database.".to_string())
-                    }
+                    None => Packet::RespError("No such database.".to_string()),
                 }
             }
             Packet::CmdRangeFromDescEx(page_size, key) => {
@@ -330,9 +314,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                         }
                         Packet::RespPairs(tokens)
                     }
-                    None => {
-                        Packet::RespError("No such database.".to_string())
-                    }
+                    None => Packet::RespError("No such database.".to_string()),
                 }
             }
             _ => Packet::RespError("unknown command".to_string()),

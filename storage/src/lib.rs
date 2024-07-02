@@ -64,13 +64,21 @@ impl Storage {
         let mut opts = Options::default();
         opts.create_if_missing(true);
         let db = DB::open(&opts, path).unwrap();
-        Self { db, path: Some(path.to_string()), temp: false }
+        Self {
+            db,
+            path: Some(path.to_string()),
+            temp: false,
+        }
     }
 
     pub fn new_with_temp_dir(prefix: &str) -> Self {
         let dir = tempfile::Builder::new().prefix(prefix).tempdir().unwrap();
         let db = DB::open_default(dir.path()).unwrap();
-        Self { db, path: None, temp: true }
+        Self {
+            db,
+            path: None,
+            temp: true,
+        }
     }
 
     pub fn set(&self, key: &[u8], value: &[u8]) {
