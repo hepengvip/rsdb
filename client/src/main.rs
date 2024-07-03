@@ -29,8 +29,11 @@ fn main() {
         println!("No previous history.");
     }
 
-    println!("Welcome to RSDB client!");
-    println!("Type 'help' for a list of commands.\n");
+    let pkg_name = env!("CARGO_PKG_NAME");
+    let pkg_version = env!("CARGO_PKG_VERSION");
+
+    println!("\n\t{pkg_name} {pkg_version}\n");
+    println!("    > Type `help` for a list of commands.\n");
 
     let mut db_name = String::from("(none) ");
 

@@ -26,6 +26,11 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
+    let pkg_name = env!("CARGO_PKG_NAME");
+    let pkg_version = env!("CARGO_PKG_VERSION");
+
+    println!("\n\t{pkg_name} {pkg_version}\n");
+
     let s = Server::new(&args.addr, &args.root);
     s.listen_and_serve();
 }
@@ -55,8 +60,8 @@ impl Server {
 
     pub fn listen_and_serve(&self) {
         // Build a server
-        println!("Listening at {}", &self.address);
-        println!("Storage: {}", &self.storage_dir);
+        println!("    > Listening at {}", &self.address);
+        println!("    > Storage: {}\n", &self.storage_dir);
         for streams in self.listener.incoming() {
             match streams {
                 Err(e) => {
@@ -121,7 +126,9 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                     let pairs = cmd.len() / 2;
                     for idx in 0..pairs {
                         let begin = idx * 2;
-                        db.as_ref().unwrap().set(cmd.get(begin).unwrap(), cmd.get(begin + 1).unwrap())
+                        db.as_ref()
+                            .unwrap()
+                            .set(cmd.get(begin).unwrap(), cmd.get(begin + 1).unwrap())
                     }
                     Packet::RespOk("Ok.".to_string())
                 } else {
