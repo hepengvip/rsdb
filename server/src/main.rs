@@ -11,7 +11,7 @@ use packet::{Packet, PacketReaderWriter};
 use storage::{Direction, IteratorMode, MultiDB};
 
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = "RSDB client utility")]
+#[command(version, about, long_about = "RSDB server")]
 struct Args {
     #[arg(short, long, default_value_t=String::from("127.0.0.1:10110"))]
     addr: String,
