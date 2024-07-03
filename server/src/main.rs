@@ -76,8 +76,8 @@ impl Server {
 fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
     println!("Connection from {}", stream.peer_addr()?);
 
-    let mut current_db_name = String::from("default");
     let mut rw = PacketReaderWriter::new(stream);
+    let mut db: Option<Arc<storage::Storage>> = None;
     loop {
         // let packet = rw.read_packet();
         let packet = rw.read_packet();
@@ -89,79 +89,68 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
         let resp = match packet.unwrap() {
             Packet::CmdDelete(ref cmd) => {
                 println!("Received delete command: {:?}", cmd);
-                let db = {
-                    let msdb = mdb.lock().unwrap();
-                    msdb.get_db(&current_db_name)
-                };
-                match db {
-                    Some(db) => {
-                        for key in cmd {
-                            db.delete(key);
-                        }
-                        Packet::RespOk("Ok.".to_string())
+                if db.is_some() {
+                    for key in cmd {
+                        db.as_ref().unwrap().delete(key);
                     }
-                    None => Packet::RespError("No such database.".to_string()),
+                    Packet::RespOk("Ok.".to_string())
+                } else {
+                    Packet::RespError("no db selected".to_string())
                 }
             }
             Packet::CmdRead(ref cmd) => {
                 println!("Received read command: {:?}", cmd);
-                let db = {
-                    let msdb = mdb.lock().unwrap();
-                    msdb.get_db(&current_db_name)
-                };
-                match db {
-                    Some(db) => {
-                        let mut values = Vec::new();
-                        for key in cmd {
-                            let db_rs = db.get(key);
-                            let value = match db_rs {
-                                Some(value) => value,
-                                None => Vec::new(),
-                            };
-                            values.push(value);
-                        }
-                        Packet::RespTokens(values)
+                if db.is_some() {
+                    let mut values = Vec::new();
+                    for key in cmd {
+                        let db_rs = db.as_ref().unwrap().get(key);
+                        let value = match db_rs {
+                            Some(value) => value,
+                            None => Vec::new(),
+                        };
+                        values.push(value);
                     }
-                    None => Packet::RespError("No such database.".to_string()),
+                    Packet::RespTokens(values)
+                } else {
+                    Packet::RespError("no db selected".to_string())
                 }
             }
             Packet::CmdWrite(ref cmd) => {
                 println!("Received write command: {:?}", cmd);
-                let db = {
-                    let msdb = mdb.lock().unwrap();
-                    msdb.get_db(&current_db_name)
-                };
-                match db {
-                    Some(db) => {
-                        let pairs = cmd.len() / 2;
-                        for idx in 0..pairs {
-                            let begin = idx * 2;
-                            db.set(cmd.get(begin).unwrap(), cmd.get(begin + 1).unwrap())
-                        }
-                        Packet::RespOk("Ok.".to_string())
+                if db.is_some() {
+                    let pairs = cmd.len() / 2;
+                    for idx in 0..pairs {
+                        let begin = idx * 2;
+                        db.as_ref().unwrap().set(cmd.get(begin).unwrap(), cmd.get(begin + 1).unwrap())
                     }
-                    None => Packet::RespError("No such database.".to_string()),
+                    Packet::RespOk("Ok.".to_string())
+                } else {
+                    Packet::RespError("no db selected".to_string())
                 }
             }
             Packet::CmdUse(cmd) => {
                 println!("Received use command: {:?}", cmd);
-                current_db_name.clear();
-                current_db_name = String::from_utf8(cmd).unwrap();
+                let current_db_name = String::from_utf8(cmd).unwrap();
 
-                {
+                db = {
                     let mut msdb = mdb.lock().unwrap();
                     msdb.attach(&current_db_name);
-                }
+                    msdb.get_db(&current_db_name)
+                };
 
                 Packet::RespOk("Ok.".to_string())
             }
             Packet::CmdCurrentDB() => {
                 println!("Received current db command");
-                Packet::RespToken(current_db_name.as_bytes().to_vec())
+                if db.is_some() {
+                    let sdb = db.as_ref().unwrap().as_ref();
+                    Packet::RespToken(sdb.path.as_ref().unwrap().as_bytes().to_vec())
+                } else {
+                    Packet::RespError("no db selected".to_string())
+                }
             }
             Packet::CmdListDb() => {
                 println!("Received list db command");
-                // Packet::RespToken(current_db_name.as_bytes().to_vec())
                 let mut db_names = vec![];
                 {
                     let msdb = mdb.lock().unwrap();
@@ -174,8 +163,12 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
             Packet::CmdDetach(cmd) => {
                 println!("Received detach command: {:?}", cmd);
                 let detach_db = String::from_utf8(cmd).unwrap();
-                if detach_db == current_db_name {
-                    current_db_name.clear();
+                if db.is_some() {
+                    let sdb = db.as_ref().unwrap().as_ref();
+                    if sdb.path.as_ref().unwrap() == &detach_db {
+                        let _adb = db;
+                        db = None;
+                    }
                 }
 
                 {
@@ -187,134 +180,104 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
             }
             Packet::CmdRangeBegin(page_size) => {
                 println!("Received range(begin) command: {:?}", page_size);
-                let db = {
-                    let msdb = mdb.lock().unwrap();
-                    msdb.get_db(&current_db_name)
-                };
-                match db {
-                    Some(db) => {
-                        let it = db.this_db().iterator(IteratorMode::Start);
-                        let mut tokens = vec![];
-                        for rs in it.take(page_size as usize) {
-                            let (k, v) = rs.unwrap();
-                            tokens.push(k.to_vec());
-                            tokens.push(v.to_vec());
-                        }
-                        Packet::RespPairs(tokens)
+                if db.is_some() {
+                    let it = db.as_ref().unwrap().this_db().iterator(IteratorMode::Start);
+                    let mut tokens = vec![];
+                    for rs in it.take(page_size as usize) {
+                        let (k, v) = rs.unwrap();
+                        tokens.push(k.to_vec());
+                        tokens.push(v.to_vec());
                     }
-                    None => Packet::RespError("No such database.".to_string()),
+                    Packet::RespPairs(tokens)
+                } else {
+                    Packet::RespError("no db selected".to_string())
                 }
             }
             Packet::CmdRangeEnd(page_size) => {
                 println!("Received range(end) command: {:?}", page_size);
-                let db = {
-                    let msdb = mdb.lock().unwrap();
-                    msdb.get_db(&current_db_name)
-                };
-                match db {
-                    Some(db) => {
-                        let it = db.this_db().iterator(IteratorMode::End);
-                        let mut tokens = vec![];
-                        for rs in it.take(page_size as usize) {
-                            let (k, v) = rs.unwrap();
-                            tokens.push(k.to_vec());
-                            tokens.push(v.to_vec());
-                        }
-                        Packet::RespPairs(tokens)
+                if db.is_some() {
+                    let it = db.as_ref().unwrap().this_db().iterator(IteratorMode::End);
+                    let mut tokens = vec![];
+                    for rs in it.take(page_size as usize) {
+                        let (k, v) = rs.unwrap();
+                        tokens.push(k.to_vec());
+                        tokens.push(v.to_vec());
                     }
-                    None => Packet::RespError("No such database.".to_string()),
+                    Packet::RespPairs(tokens)
+                } else {
+                    Packet::RespError("no db selected".to_string())
                 }
             }
             Packet::CmdRangeFromAsc(page_size, key) => {
                 println!("Received range(from asc) command: {:?}", page_size);
-                let db = {
-                    let msdb = mdb.lock().unwrap();
-                    msdb.get_db(&current_db_name)
-                };
-                match db {
-                    Some(db) => {
-                        let iter_mode = IteratorMode::From(key.as_slice(), Direction::Forward);
-                        let it = db.this_db().iterator(iter_mode);
-                        let mut tokens = vec![];
-                        for rs in it.take(page_size as usize) {
-                            let (k, v) = rs.unwrap();
-                            tokens.push(k.to_vec());
-                            tokens.push(v.to_vec());
-                        }
-                        Packet::RespPairs(tokens)
+                if db.is_some() {
+                    let iter_mode = IteratorMode::From(key.as_slice(), Direction::Forward);
+                    let it = db.as_ref().unwrap().this_db().iterator(iter_mode);
+                    let mut tokens = vec![];
+                    for rs in it.take(page_size as usize) {
+                        let (k, v) = rs.unwrap();
+                        tokens.push(k.to_vec());
+                        tokens.push(v.to_vec());
                     }
-                    None => Packet::RespError("No such database.".to_string()),
+                    Packet::RespPairs(tokens)
+                } else {
+                    Packet::RespError("no db selected".to_string())
                 }
             }
             Packet::CmdRangeFromAscEx(page_size, key) => {
                 println!("Received range(from asc) command: {:?}", page_size);
-                let db = {
-                    let msdb = mdb.lock().unwrap();
-                    msdb.get_db(&current_db_name)
-                };
-                match db {
-                    Some(db) => {
-                        let iter_mode = IteratorMode::From(key.as_slice(), Direction::Forward);
-                        let it = db.this_db().iterator(iter_mode);
-                        let mut tokens = vec![];
-                        for (idx, rs) in it.take(page_size as usize + 1).enumerate() {
-                            let (k, v) = rs.unwrap();
-                            let k_vec = k.to_vec();
-                            if idx == 0 && k_vec == key {
-                                continue;
-                            }
-                            tokens.push(k_vec);
-                            tokens.push(v.to_vec());
+                if db.is_some() {
+                    let iter_mode = IteratorMode::From(key.as_slice(), Direction::Forward);
+                    let it = db.as_ref().unwrap().this_db().iterator(iter_mode);
+                    let mut tokens = vec![];
+                    for (idx, rs) in it.take(page_size as usize + 1).enumerate() {
+                        let (k, v) = rs.unwrap();
+                        let k_vec = k.to_vec();
+                        if idx == 0 && k_vec == key {
+                            continue;
                         }
-                        Packet::RespPairs(tokens)
+                        tokens.push(k_vec);
+                        tokens.push(v.to_vec());
                     }
-                    None => Packet::RespError("No such database.".to_string()),
+                    Packet::RespPairs(tokens)
+                } else {
+                    Packet::RespError("no db selected".to_string())
                 }
             }
             Packet::CmdRangeFromDesc(page_size, key) => {
                 println!("Received range(from asc) command: {:?}", page_size);
-                let db = {
-                    let msdb = mdb.lock().unwrap();
-                    msdb.get_db(&current_db_name)
-                };
-                match db {
-                    Some(db) => {
-                        let iter_mode = IteratorMode::From(key.as_slice(), Direction::Reverse);
-                        let it = db.this_db().iterator(iter_mode);
-                        let mut tokens = vec![];
-                        for rs in it.take(page_size as usize) {
-                            let (k, v) = rs.unwrap();
-                            tokens.push(k.to_vec());
-                            tokens.push(v.to_vec());
-                        }
-                        Packet::RespPairs(tokens)
+                if db.is_some() {
+                    let iter_mode = IteratorMode::From(key.as_slice(), Direction::Reverse);
+                    let it = db.as_ref().unwrap().this_db().iterator(iter_mode);
+                    let mut tokens = vec![];
+                    for rs in it.take(page_size as usize) {
+                        let (k, v) = rs.unwrap();
+                        tokens.push(k.to_vec());
+                        tokens.push(v.to_vec());
                     }
-                    None => Packet::RespError("No such database.".to_string()),
+                    Packet::RespPairs(tokens)
+                } else {
+                    Packet::RespError("no db selected".to_string())
                 }
             }
             Packet::CmdRangeFromDescEx(page_size, key) => {
                 println!("Received range(from asc) command: {:?}", page_size);
-                let db = {
-                    let msdb = mdb.lock().unwrap();
-                    msdb.get_db(&current_db_name)
-                };
-                match db {
-                    Some(db) => {
-                        let iter_mode = IteratorMode::From(key.as_slice(), Direction::Reverse);
-                        let it = db.this_db().iterator(iter_mode);
-                        let mut tokens = vec![];
-                        for (idx, rs) in it.take(page_size as usize + 1).enumerate() {
-                            let (k, v) = rs.unwrap();
-                            let k_vec = k.to_vec();
-                            if idx == 0 && k_vec == key {
-                                continue;
-                            }
-                            tokens.push(k_vec);
-                            tokens.push(v.to_vec());
+                if db.is_some() {
+                    let iter_mode = IteratorMode::From(key.as_slice(), Direction::Reverse);
+                    let it = db.as_ref().unwrap().this_db().iterator(iter_mode);
+                    let mut tokens = vec![];
+                    for (idx, rs) in it.take(page_size as usize + 1).enumerate() {
+                        let (k, v) = rs.unwrap();
+                        let k_vec = k.to_vec();
+                        if idx == 0 && k_vec == key {
+                            continue;
                         }
-                        Packet::RespPairs(tokens)
+                        tokens.push(k_vec);
+                        tokens.push(v.to_vec());
                     }
-                    None => Packet::RespError("No such database.".to_string()),
+                    Packet::RespPairs(tokens)
+                } else {
+                    Packet::RespError("no db selected".to_string())
                 }
             }
             _ => Packet::RespError("unknown command".to_string()),
