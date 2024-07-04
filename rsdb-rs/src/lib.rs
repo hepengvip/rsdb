@@ -192,6 +192,7 @@ impl RsDBClient {
     fn send_request(&mut self, packet: &Packet) -> RsDBResult<()> {
         if let Some(ref mut rw) = self.rw {
             rw.write_packet(packet);
+            rw.flush();
             return Ok(());
         }
         Err(RsDBError::NotConnect)

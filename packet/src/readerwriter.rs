@@ -219,6 +219,8 @@ impl<T: Read + Write> PacketReaderWriter<T> {
                 }
             }
         }
+
+        self.flush();
     }
 
     fn read_header(&mut self) -> Result<u8, Error> {
@@ -253,5 +255,9 @@ impl<T: Read + Write> PacketReaderWriter<T> {
             return;
         }
         self.rw.write_all(token).unwrap();
+    }
+
+    pub fn flush(&mut self) {
+        self.rw.flush().unwrap();
     }
 }
