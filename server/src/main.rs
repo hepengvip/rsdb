@@ -80,6 +80,7 @@ impl Server {
 
 fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
     println!("Connection from {}", stream.peer_addr()?);
+    stream.set_nodelay(true)?;
 
     let mut rw = PacketReaderWriter::new(stream);
     let mut db: Option<Arc<storage::Storage>> = None;

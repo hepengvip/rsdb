@@ -25,6 +25,7 @@ impl RsDBClient {
 
     pub fn connect(&mut self, addr: &str) -> RsDBResult<()> {
         let stream = TcpStream::connect(addr)?;
+        stream.set_nodelay(true)?;
         self.rw = Some(PacketReaderWriter::new(stream));
         Ok(())
     }
