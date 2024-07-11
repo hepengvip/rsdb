@@ -94,10 +94,10 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
         // println!("Received packet: {:?}", packet);
         let resp = match packet.unwrap() {
             Packet::CmdDelete(ref cmd) => {
-                println!("Received delete command");
+                // println!("Received delete command");
                 if db.is_some() {
                     for key in cmd {
-                        db.as_ref().unwrap().delete(key);
+                        db.as_ref().unwrap().delete(key).unwrap();
                     }
                     Packet::RespOk("Ok.".to_string())
                 } else {
@@ -105,11 +105,11 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 }
             }
             Packet::CmdRead(ref cmd) => {
-                println!("Received read command");
+                // println!("Received read command");
                 if db.is_some() {
                     let mut values = Vec::new();
                     for key in cmd {
-                        let db_rs = db.as_ref().unwrap().get(key);
+                        let db_rs = db.as_ref().unwrap().get(key).unwrap();
                         let value = match db_rs {
                             Some(value) => value,
                             None => Vec::new(),
@@ -123,7 +123,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
             }
             Packet::CmdWrite(ref cmd) => {
                 // println!("Received write command: {:?}", cmd);
-                println!("Received write command");
+                // println!("Received write command");
                 if db.is_some() {
                     let pairs = cmd.len() / 2;
                     for idx in 0..pairs {
@@ -131,6 +131,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                         db.as_ref()
                             .unwrap()
                             .set(cmd.get(begin).unwrap(), cmd.get(begin + 1).unwrap())
+                            .unwrap()
                     }
                     Packet::RespOk("Ok.".to_string())
                 } else {
@@ -138,19 +139,19 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 }
             }
             Packet::CmdUse(cmd) => {
-                println!("Received use command");
+                // println!("Received use command");
                 let current_db_name = String::from_utf8(cmd).unwrap();
 
                 db = {
                     let mut msdb = mdb.lock().unwrap();
-                    msdb.attach(&current_db_name);
+                    msdb.attach(&current_db_name).unwrap();
                     msdb.get_db(&current_db_name)
                 };
 
                 Packet::RespOk("Ok.".to_string())
             }
             Packet::CmdCurrentDB() => {
-                println!("Received current db command");
+                // println!("Received current db command");
                 if db.is_some() {
                     let sdb = db.as_ref().unwrap().as_ref();
                     Packet::RespToken(sdb.path.as_ref().unwrap().as_bytes().to_vec())
@@ -159,7 +160,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 }
             }
             Packet::CmdListDb() => {
-                println!("Received list db command");
+                // println!("Received list db command");
                 let mut db_names = vec![];
                 {
                     let msdb = mdb.lock().unwrap();
@@ -170,7 +171,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 Packet::RespTokens(db_names)
             }
             Packet::CmdDetach(cmd) => {
-                println!("Received detach command");
+                // println!("Received detach command");
                 let detach_db = String::from_utf8(cmd).unwrap();
                 if db.is_some() {
                     let sdb = db.as_ref().unwrap().as_ref();
@@ -188,7 +189,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 Packet::RespOk("Ok.".to_string())
             }
             Packet::CmdRangeBegin(page_size) => {
-                println!("Received range(begin) command");
+                // println!("Received range(begin) command");
                 if db.is_some() {
                     let it = db.as_ref().unwrap().this_db().iterator(IteratorMode::Start);
                     let mut tokens = vec![];
@@ -203,7 +204,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 }
             }
             Packet::CmdRangeEnd(page_size) => {
-                println!("Received range(end) command");
+                // println!("Received range(end) command");
                 if db.is_some() {
                     let it = db.as_ref().unwrap().this_db().iterator(IteratorMode::End);
                     let mut tokens = vec![];
@@ -218,7 +219,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 }
             }
             Packet::CmdRangeFromAsc(page_size, key) => {
-                println!("Received range(from asc) command");
+                // println!("Received range(from asc) command");
                 if db.is_some() {
                     let iter_mode = IteratorMode::From(key.as_slice(), Direction::Forward);
                     let it = db.as_ref().unwrap().this_db().iterator(iter_mode);
@@ -234,7 +235,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 }
             }
             Packet::CmdRangeFromAscEx(page_size, key) => {
-                println!("Received range(from asc) command");
+                // println!("Received range(from asc) command");
                 if db.is_some() {
                     let iter_mode = IteratorMode::From(key.as_slice(), Direction::Forward);
                     let it = db.as_ref().unwrap().this_db().iterator(iter_mode);
@@ -254,7 +255,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 }
             }
             Packet::CmdRangeFromDesc(page_size, key) => {
-                println!("Received range(from asc) command");
+                // println!("Received range(from asc) command");
                 if db.is_some() {
                     let iter_mode = IteratorMode::From(key.as_slice(), Direction::Reverse);
                     let it = db.as_ref().unwrap().this_db().iterator(iter_mode);
@@ -270,7 +271,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> Result<(), Error> {
                 }
             }
             Packet::CmdRangeFromDescEx(page_size, key) => {
-                println!("Received range(from asc) command");
+                // println!("Received range(from asc) command");
                 if db.is_some() {
                     let iter_mode = IteratorMode::From(key.as_slice(), Direction::Reverse);
                     let it = db.as_ref().unwrap().this_db().iterator(iter_mode);

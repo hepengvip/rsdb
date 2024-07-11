@@ -1,5 +1,4 @@
-use rsdb_rs::{RsDBClient, IteratorMode, Direction};
-
+use rsdb_rs::{Direction, IteratorMode, RsDBClient};
 
 fn main() {
     let mut rsdb_cli = RsDBClient::new();
@@ -8,7 +7,7 @@ fn main() {
     rsdb_cli.use_db("test").unwrap();
 
     let mut cnt: usize = 0;
-    let page_size = 100;
+    let page_size = 1000;
     let mut last_key = vec![];
     loop {
         let rs = if cnt == 0 {
@@ -17,15 +16,15 @@ fn main() {
             let iter_mode = IteratorMode::From(&last_key, Direction::Forward);
             rsdb_cli.range(iter_mode, page_size, true)
         };
-        cnt += 1;
         if let Ok(rs) = rs {
             if rs.len() == 0 {
                 break;
             }
             for (k, v) in rs {
+                cnt += 1;
                 let ks = String::from_utf8((&k).to_vec()).unwrap();
                 let vs = String::from_utf8(v.to_vec()).unwrap();
-                println!("{}: {}", ks, vs);
+                println!("{}: {} => {}", cnt, ks, vs);
                 last_key = k;
             }
         } else {
