@@ -1,7 +1,7 @@
 use std::time::Instant;
 use uuid::Uuid;
 
-use rsdb_rs::RsDBClient;
+use rsdbrs::RsDBClient;
 
 fn main() {
     let mut rsdb_cli = RsDBClient::new();

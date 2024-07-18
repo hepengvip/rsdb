@@ -64,7 +64,7 @@ dependencies = [
 name = "benchmarks"
 version = "0.1.0"
 dependencies = [
- "rsdb_rs",
+ "rsdbrs",
  "uuid",
 ]
 
@@ -557,7 +557,7 @@ name = "rsdb-client"
 version = "0.1.0"
 dependencies = [
  "clap",
- "rsdb_rs",
+ "rsdbrs",
  "rustyline",
 ]
 
@@ -571,7 +571,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rsdb_rs"
+name = "rsdbrs"
 version = "0.1.0"
 dependencies = [
  "packet",

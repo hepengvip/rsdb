@@ -6,8 +6,7 @@ extern crate rustyline;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
-extern crate rsdb_rs;
-use rsdb_rs::{Direction, IteratorMode, RsDBClient};
+use rsdbrs::{Direction, IteratorMode, RsDBClient};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = "RSDB client utility")]

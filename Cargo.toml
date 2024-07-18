@@ -4,7 +4,7 @@ members = [
     "client",
     "packet",
     "storage",
-    "rsdb-rs",
+    "rsdbrs",
     "benchmarks",
 ]
 resolver = "2"
