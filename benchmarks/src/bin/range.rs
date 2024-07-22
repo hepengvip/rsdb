@@ -4,7 +4,7 @@ fn main() {
     let mut rsdb_cli = RsDBClient::new();
     rsdb_cli.connect("127.0.0.1:10110").unwrap();
 
-    rsdb_cli.use_db("ts.ru2501").unwrap();
+    rsdb_cli.use_db("test").unwrap();
 
     let mut cnt: usize = 0;
     let page_size = 1000;
