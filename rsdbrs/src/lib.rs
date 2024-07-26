@@ -1,4 +1,5 @@
 use std::net::TcpStream;
+use std::os::unix::net::UnixStream;
 
 use packet::{Packet, PacketReaderWriter};
 
@@ -12,21 +13,30 @@ extern crate packet;
 
 pub struct RsDBClient {
     db_name: Option<String>,
-    rw: Option<PacketReaderWriter<TcpStream>>,
+    rw: (Option<PacketReaderWriter<TcpStream>>, Option<PacketReaderWriter<UnixStream>>),
+    is_unix_sock: bool,
 }
 
 impl RsDBClient {
     pub fn new() -> Self {
         Self {
             db_name: None,
-            rw: None,
+            rw: (None, None),
+            is_unix_sock: false,
         }
     }
 
     pub fn connect(&mut self, addr: &str) -> RsDBResult<()> {
-        let stream = TcpStream::connect(addr)?;
-        stream.set_nodelay(true)?;
-        self.rw = Some(PacketReaderWriter::new(stream));
+        if addr.starts_with("/") {
+            let unix_sock = UnixStream::connect(addr)?;
+            self.is_unix_sock = true;
+            self.rw.1 = Some(PacketReaderWriter::new(unix_sock));
+        } else {
+            let stream = TcpStream::connect(addr)?;
+            stream.set_nodelay(true)?;
+            self.rw.0 = Some(PacketReaderWriter::new(stream));
+        }
+
         Ok(())
     }
 
@@ -184,18 +194,33 @@ impl RsDBClient {
     }
 
     fn read_resp(&mut self) -> RsDBResult<Packet> {
-        if let Some(ref mut rw) = self.rw {
-            let rs = rw.read_packet()?;
-            return Ok(rs);
+        if self.is_unix_sock {
+            if let Some(ref mut rw) = self.rw.1 {
+                let rs = rw.read_packet()?;
+                return Ok(rs);
+            }
+        } else {
+            if let Some(ref mut rw) = self.rw.0 {
+                let rs = rw.read_packet()?;
+                return Ok(rs);
+            }
         }
         Err(RsDBError::NotConnect)
     }
 
     fn send_request(&mut self, packet: &Packet) -> RsDBResult<()> {
-        if let Some(ref mut rw) = self.rw {
-            rw.write_packet(packet)?;
-            rw.flush()?;
-            return Ok(());
+        if self.is_unix_sock {
+            if let Some(ref mut rw) = self.rw.1 {
+                rw.write_packet(packet)?;
+                rw.flush()?;
+                return Ok(());
+            }
+        } else {
+            if let Some(ref mut rw) = self.rw.0 {
+                rw.write_packet(packet)?;
+                rw.flush()?;
+                return Ok(());
+            }
         }
         Err(RsDBError::NotConnect)
     }

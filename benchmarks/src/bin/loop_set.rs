@@ -5,7 +5,8 @@ use rsdbrs::RsDBClient;
 
 fn main() {
     let mut rsdb_cli = RsDBClient::new();
-    rsdb_cli.connect("127.0.0.1:10110").unwrap();
+    // rsdb_cli.connect("127.0.0.1:10110").unwrap();
+    rsdb_cli.connect("/tmp/rsdb.sock").unwrap();
 
     rsdb_cli.use_db("test").unwrap();
 

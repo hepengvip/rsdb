@@ -1,4 +1,6 @@
-use std::net::{TcpListener, TcpStream};
+use std::io::{Read, Write, Result};
+use std::net::TcpListener;
+use std::os::unix::net::UnixListener;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -16,14 +18,14 @@ use errors::{ServerError, ServerResult};
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = "RSDB server")]
 struct Args {
-    #[arg(short, long, default_value_t=String::from("127.0.0.1:10110"))]
-    addr: String,
+    #[arg(short, long)]
+    addr: Option<String>,
 
     #[arg(short, long)]
     root: String,
-    // Number of times to greet
-    // #[arg(short, long, default_value_t = 1)]
-    // count: u8,
+
+    #[arg(short, long)]
+    unix_addr: Option<String>,
 }
 
 fn main() {
@@ -34,62 +36,89 @@ fn main() {
 
     println!("\n\t{pkg_name} {pkg_version}\n");
 
-    let s = Server::new(&args.addr, &args.root);
+    let s = Server::new(args.addr, &args.root, args.unix_addr);
     match s {
         Err(e) => eprintln!("Error: {}", e),
-        Ok(s) => s.listen_and_serve(),
+        Ok(s) => s.listen_and_serve().unwrap(),
     }
 }
 
 pub struct Server {
-    // addr: Option<String>,
-    listener: TcpListener,
     storage: Arc<Mutex<MultiDB>>,
-    address: String,
+    address: Option<String>,
+    unix_address: Option<String>,
     storage_dir: String,
 }
 
 impl Server {
-    pub fn new(addr: &str, root: &str) -> ServerResult<Self> {
+    pub fn new(addr: Option<String>, root: &str, unix_addr: Option<String>) -> ServerResult<Self> {
         let server = Server {
-            // addr: Some("127.0.0.1:1935".to_string()),
-            listener: TcpListener::bind(addr)?,
-            // storage: Arc::new(Storage::new_with_temp_dir("rsdb")),
-            // storage: Arc::new(Storage::new(root)),
             storage: Arc::new(Mutex::new(MultiDB::new(root))),
-            address: addr.to_string(),
+            address: addr,
+            unix_address: unix_addr,
             storage_dir: root.to_string(),
         };
 
         Ok(server)
     }
 
-    pub fn listen_and_serve(&self) {
+    pub fn listen_and_serve(&self) -> Result<()> {
         // Build a server
-        println!("    > Listening at {}", &self.address);
+        println!("    > Listening at tcp  address {:?}", &self.address);
+        println!("    > Listening at unix address {:?}", &self.unix_address);
         println!("    > Storage: {}\n", &self.storage_dir);
-        for streams in self.listener.incoming() {
-            match streams {
-                Err(e) => {
-                    eprintln!("error: {}", e)
+
+        // create a new thread to handle unix domain socket
+        if let Some(addr) = &self.unix_address {
+            let unix_sock = UnixListener::bind(addr)?;
+            let storage = self.storage.clone();
+            thread::spawn(move || {
+                for stream in unix_sock.incoming() {
+                    match stream {
+                        Err(e) => eprintln!("error: {}", e),
+                        Ok(stream) => {
+                            let db_copy = storage.clone();
+                            thread::spawn(move || {
+                                handler(stream, "<local unix client>", db_copy).unwrap_or_else(|error| {
+                                    eprintln!("{:?}", error);
+                                });
+                            });
+                        }
+                    }
                 }
-                Ok(stream) => {
-                    let db_copy = self.storage.clone();
-                    thread::spawn(move || {
-                        handler(stream, db_copy).unwrap_or_else(|error| {
-                            eprintln!("{:?}", error);
+            });
+        }
+
+        // handle tcp incoming connections
+        if let Some(addr) = &self.address {
+            let listener = TcpListener::bind(addr)?;
+            for streams in listener.incoming() {
+                match streams {
+                    Err(e) => {
+                        eprintln!("error: {}", e)
+                    }
+                    Ok(stream) => {
+                        let peer_name = format!("{}", stream.peer_addr().unwrap());
+                        stream.set_nodelay(true).unwrap();
+                        let db_copy = self.storage.clone();
+                        thread::spawn(move || {
+                            handler(stream, &peer_name, db_copy).unwrap_or_else(|error| {
+                                eprintln!("{:?}", error);
+                            });
                         });
-                    });
+                    }
                 }
             }
         }
+
+        Ok(())
     }
 }
 
-fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> ServerResult<()> {
-    let peer_addr = stream.peer_addr()?;
-    println!("Connection from {}", peer_addr);
-    stream.set_nodelay(true)?;
+fn handler<T>(stream: T, peer_name: &str, mdb: Arc<Mutex<MultiDB>>) -> ServerResult<()> 
+    where T: Read + Write
+{
+    println!("Connection from {}", peer_name);
 
     let mut rw = PacketReaderWriter::new(stream);
     let mut db: Option<Arc<storage::Storage>> = None;
@@ -97,7 +126,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> ServerResult<()> {
         // let packet = rw.read_packet();
         let packet = rw.read_packet();
         if packet.is_err() {
-            println!("Connection closed by client:{}.", peer_addr);
+            println!("Connection closed by client: <{peer_name}>");
             break;
         }
         let resp = match packet? {
