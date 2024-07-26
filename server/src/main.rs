@@ -76,7 +76,9 @@ impl Server {
                 Ok(stream) => {
                     let db_copy = self.storage.clone();
                     thread::spawn(move || {
-                        handler(stream, db_copy).unwrap_or_else(|error| eprintln!("{:?}", error));
+                        handler(stream, db_copy).unwrap_or_else(|error| {
+                            eprintln!("{:?}", error);
+                        });
                     });
                 }
             }
