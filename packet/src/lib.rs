@@ -24,6 +24,6 @@ pub mod readerwriter;
 pub mod writer;
 
 // pub use reader::PacketReader;
-pub use readerwriter::PacketReaderWriter;
 pub use errors::{PacketError, PacketResult};
+pub use readerwriter::PacketReaderWriter;
 // pub use writer::PacketWriter;

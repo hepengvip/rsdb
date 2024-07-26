@@ -13,7 +13,10 @@ extern crate packet;
 
 pub struct RsDBClient {
     db_name: Option<String>,
-    rw: (Option<PacketReaderWriter<TcpStream>>, Option<PacketReaderWriter<UnixStream>>),
+    rw: (
+        Option<PacketReaderWriter<TcpStream>>,
+        Option<PacketReaderWriter<UnixStream>>,
+    ),
     is_unix_sock: bool,
 }
 

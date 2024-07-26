@@ -2,8 +2,8 @@ use std::io::{Read, Write};
 
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::packet;
 use crate::errors::PacketResult;
+use crate::packet;
 
 pub struct PacketReaderWriter<T: Read + Write> {
     rw: T,

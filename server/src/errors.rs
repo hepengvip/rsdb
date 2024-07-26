@@ -3,8 +3,8 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::io::Error as IOErr;
 use std::string::FromUtf8Error;
 
-use storage::StorageError;
 use packet::PacketError;
+use storage::StorageError;
 
 #[derive(Debug)]
 pub enum ServerError {

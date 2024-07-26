@@ -1,4 +1,4 @@
-use std::io::{Read, Write, Result};
+use std::io::{Read, Result, Write};
 use std::net::TcpListener;
 use std::os::unix::net::UnixListener;
 use std::sync::{Arc, Mutex};
@@ -79,9 +79,11 @@ impl Server {
                         Ok(stream) => {
                             let db_copy = storage.clone();
                             thread::spawn(move || {
-                                handler(stream, "<local unix client>", db_copy).unwrap_or_else(|error| {
-                                    eprintln!("{:?}", error);
-                                });
+                                handler(stream, "<local unix client>", db_copy).unwrap_or_else(
+                                    |error| {
+                                        eprintln!("{:?}", error);
+                                    },
+                                );
                             });
                         }
                     }
@@ -115,8 +117,9 @@ impl Server {
     }
 }
 
-fn handler<T>(stream: T, peer_name: &str, mdb: Arc<Mutex<MultiDB>>) -> ServerResult<()> 
-    where T: Read + Write
+fn handler<T>(stream: T, peer_name: &str, mdb: Arc<Mutex<MultiDB>>) -> ServerResult<()>
+where
+    T: Read + Write,
 {
     println!("Connection from {}", peer_name);
 
