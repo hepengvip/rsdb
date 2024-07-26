@@ -1,3 +1,4 @@
+mod errors;
 mod packet;
 
 pub use packet::CMD_LENGTH;
@@ -22,6 +23,7 @@ pub mod reader;
 pub mod readerwriter;
 pub mod writer;
 
-pub use reader::PacketReader;
+// pub use reader::PacketReader;
 pub use readerwriter::PacketReaderWriter;
-pub use writer::PacketWriter;
+pub use errors::{PacketError, PacketResult};
+// pub use writer::PacketWriter;

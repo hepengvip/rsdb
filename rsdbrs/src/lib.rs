@@ -120,7 +120,7 @@ impl RsDBClient {
             Packet::RespToken(data) => match data.len() {
                 0 => Ok(None),
                 _ => {
-                    let msg = String::from_utf8(data).unwrap();
+                    let msg = String::from_utf8(data)?;
                     self.db_name = Some(msg.clone());
                     Ok(Some(msg))
                 }
@@ -133,6 +133,7 @@ impl RsDBClient {
         let packet = Packet::CmdListDb();
         self.send_request(&packet)?;
         let resp = self.read_resp()?;
+
         match resp {
             Packet::RespTokens(tokens) => {
                 let db_names = tokens
@@ -171,8 +172,8 @@ impl RsDBClient {
                 let mut pairs = vec![];
                 let pair_count = tokens.len() / 2;
                 for _idx in 0..pair_count {
-                    let v = tokens.pop().unwrap();
-                    let k = tokens.pop().unwrap();
+                    let v = tokens.pop().ok_or(RsDBError::EmptyToken)?;
+                    let k = tokens.pop().ok_or(RsDBError::EmptyToken)?;
                     pairs.push((k, v))
                 }
                 pairs.reverse();
@@ -192,8 +193,8 @@ impl RsDBClient {
 
     fn send_request(&mut self, packet: &Packet) -> RsDBResult<()> {
         if let Some(ref mut rw) = self.rw {
-            rw.write_packet(packet);
-            rw.flush();
+            rw.write_packet(packet)?;
+            rw.flush()?;
             return Ok(());
         }
         Err(RsDBError::NotConnect)

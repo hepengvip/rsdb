@@ -4,6 +4,7 @@ use std::io::Error as IOErr;
 use std::string::FromUtf8Error;
 
 use storage::StorageError;
+use packet::PacketError;
 
 #[derive(Debug)]
 pub enum ServerError {
@@ -12,6 +13,7 @@ pub enum ServerError {
     StorageError(StorageError),
     NoDBSelected,
     InvalidData,
+    PacketError(PacketError),
 }
 
 impl Error for ServerError {}
@@ -34,6 +36,12 @@ impl From<StorageError> for ServerError {
     }
 }
 
+impl From<PacketError> for ServerError {
+    fn from(e: PacketError) -> Self {
+        ServerError::PacketError(e)
+    }
+}
+
 impl Display for ServerError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -51,6 +59,9 @@ impl Display for ServerError {
             }
             Self::InvalidData => {
                 write!(f, "InvalidData")
+            }
+            Self::PacketError(e) => {
+                write!(f, "PacketError - {e}")
             }
         }
     }

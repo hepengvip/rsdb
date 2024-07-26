@@ -318,7 +318,7 @@ fn handler(stream: TcpStream, mdb: Arc<Mutex<MultiDB>>) -> ServerResult<()> {
             }
             _ => Packet::RespError("unknown command".to_string()),
         };
-        rw.write_packet(&resp);
+        rw.write_packet(&resp)?;
     }
 
     Ok(())
