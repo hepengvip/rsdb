@@ -11,7 +11,6 @@ pub enum ServerError {
     IOError(IOErr),
     FromUtf8Error(FromUtf8Error),
     StorageError(StorageError),
-    NoDBSelected,
     InvalidData,
     PacketError(PacketError),
 }
@@ -53,9 +52,6 @@ impl Display for ServerError {
             }
             Self::StorageError(e) => {
                 write!(f, "StorageError - {e}")
-            }
-            Self::NoDBSelected => {
-                write!(f, "NoDBSelected")
             }
             Self::InvalidData => {
                 write!(f, "InvalidData")
