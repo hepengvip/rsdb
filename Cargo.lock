@@ -575,7 +575,6 @@ name = "rsdbrs"
 version = "0.1.0"
 dependencies = [
  "packet",
- "storage",
 ]
 
 [[package]]

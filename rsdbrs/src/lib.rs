@@ -3,13 +3,28 @@ use std::os::unix::net::UnixStream;
 
 use packet::{Packet, PacketReaderWriter};
 
-extern crate storage;
-pub use storage::{Direction, IteratorMode};
+// extern crate storage;
+// pub use storage::{Direction, IteratorMode};
 
 mod errors;
 pub use errors::{RsDBError, RsDBResult};
 
 extern crate packet;
+
+
+#[derive(Copy, Clone)]
+pub enum Direction {
+    Forward,
+    Reverse,
+}
+
+#[derive(Copy, Clone)]
+pub enum IteratorMode<'a> {
+    Start,
+    End,
+    From(&'a [u8], Direction),
+}
+
 
 pub struct RsDBClient {
     db_name: Option<String>,
