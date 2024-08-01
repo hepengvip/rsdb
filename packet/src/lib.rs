@@ -1,5 +1,5 @@
-mod errors;
-mod packet;
+pub mod errors;
+pub mod packet;
 
 pub use packet::CMD_LENGTH;
 pub use packet::LEN_LENGTH;

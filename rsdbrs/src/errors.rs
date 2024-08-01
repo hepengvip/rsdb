@@ -3,8 +3,8 @@ use std::fmt::{self, Display, Formatter};
 use std::io::Error as IOErr;
 use std::string::FromUtf8Error;
 
-extern crate packet;
-use packet::PacketError;
+// use packet::PacketError;
+use packet::errors::PacketError;
 
 #[derive(Debug)]
 pub enum RsDBError {

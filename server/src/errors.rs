@@ -3,7 +3,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::io::Error as IOErr;
 use std::string::FromUtf8Error;
 
-use packet::PacketError;
+use packet::errors::PacketError;
 use storage::StorageError;
 
 #[derive(Debug)]
