@@ -11,7 +11,6 @@ pub use errors::{RsDBError, RsDBResult};
 
 extern crate packet;
 
-
 #[derive(Copy, Clone)]
 pub enum Direction {
     Forward,
@@ -24,7 +23,6 @@ pub enum IteratorMode<'a> {
     End,
     From(&'a [u8], Direction),
 }
-
 
 pub struct RsDBClient {
     db_name: Option<String>,
@@ -63,6 +61,23 @@ impl RsDBClient {
         let mut bytes_parts = vec![];
         bytes_parts.push(key.to_vec());
         bytes_parts.push(value.to_vec());
+        let packet = Packet::CmdWrite(bytes_parts);
+        self.send_request(&packet)?;
+        let res = self.read_resp()?;
+        if let Packet::RespError(ref msg) = res {
+            return Err(RsDBError::RespError(msg.to_string()));
+        }
+
+        Ok(())
+    }
+
+    pub fn mset(&mut self, items: &Vec<Vec<u8>>) -> RsDBResult<()> {
+        self.check_db()?;
+        let mut bytes_parts = vec![];
+        assert_eq!(items.len() % 2, 0);
+        for item in items {
+            bytes_parts.push(item.to_vec());
+        }
         let packet = Packet::CmdWrite(bytes_parts);
         self.send_request(&packet)?;
         let res = self.read_resp()?;
